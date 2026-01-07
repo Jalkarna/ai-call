@@ -1,0 +1,57 @@
+# General
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+
+# Frontend (Node.js / Next.js)
+frontend/node_modules/
+node_modules/
+frontend/.next/
+.next/
+frontend/out/
+out/
+frontend/build/
+build/
+frontend/.env*.local
+.env*.local
+.npm
+*.tsbuildinfo
+yarn-error.log
+npm-debug.log*
+
+# Framework / Tooling
+.turbo/
+.vercel/
+.vercel_build_output/
+
+# Backend (Python)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git
+.mypy_cache/
+.pytest_cache/
+.bypy_cache/
+instance/
+.webassets-cache
+.env
+.env.local
+htmlcov/
+*.egg-info/
