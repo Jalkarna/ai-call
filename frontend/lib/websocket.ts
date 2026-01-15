@@ -1,5 +1,5 @@
 /**
- * VMC Voice AI - WebSocket Hook
+ * Vadodara Municipal Corporation Complaint Center - WebSocket Hook
  * 
  * React hook for managing WebSocket connections to the backend
  * for real-time updates on calls, complaints, and system events.

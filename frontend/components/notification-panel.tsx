@@ -39,7 +39,7 @@ const INITIAL_NOTIFICATIONS: Notification[] = [
     id: "1",
     type: "escalation",
     title: "Call Escalation Required",
-    message: "Caller at +91 98*** **456 has requested human assistance.",
+    message: "Caller at +91 98765 43210 has requested human assistance.",
     timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     read: false,
   },
