@@ -1,5 +1,5 @@
 /**
- * VMC Voice AI - API Service Layer
+ * Vadodara Municipal Corporation Complaint Center - API Service Layer
  * 
  * Centralized API client for all backend interactions.
  * Handles authentication, error handling, and request/response transformation.

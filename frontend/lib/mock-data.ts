@@ -85,7 +85,7 @@ export const generateMockCalls = (count: number): Log[] => {
     
     return {
       id: generateRandomId(rng),
-      callerId: `+91 98*** **${Math.floor(rng.next() * 900) + 100}`,
+      callerId: `+91 ${Math.floor(rng.next() * 90000 + 10000)} ${Math.floor(rng.next() * 90000 + 10000)}`,
       timestamp: date.toISOString(),
       duration: `${Math.floor(rng.next() * 5) + 1}m ${Math.floor(rng.next() * 59)}s`,
       language: ["Hindi", "Gujarati", "English"][Math.floor(rng.next() * 3)],

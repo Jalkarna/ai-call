@@ -48,9 +48,9 @@ const hourlyData = [
 
 // Mock live calls for real-time display
 const MOCK_LIVE_CALLS = [
-  { id: "live-1", callerId: "+91 98765 XXXXX", duration: "2:34", status: "active", intent: "Garbage Collection", language: "Hindi", sentiment: "Neutral" },
-  { id: "live-2", callerId: "+91 87654 XXXXX", duration: "1:12", status: "active", intent: "Water Supply", language: "Gujarati", sentiment: "Frustrated" },
-  { id: "live-3", callerId: "+91 76543 XXXXX", duration: "0:45", status: "processing", intent: "Streetlight Issue", language: "Hindi", sentiment: "Neutral" },
+  { id: "live-1", callerId: "+91 98765 43210", duration: "2:34", status: "active", intent: "Garbage Collection", language: "Hindi", sentiment: "Neutral" },
+  { id: "live-2", callerId: "+91 87654 32109", duration: "1:12", status: "active", intent: "Water Supply", language: "Gujarati", sentiment: "Frustrated" },
+  { id: "live-3", callerId: "+91 76543 21098", duration: "0:45", status: "processing", intent: "Streetlight Issue", language: "Hindi", sentiment: "Neutral" },
 ];
 
 // Stats type

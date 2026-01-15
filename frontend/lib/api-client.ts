@@ -1,5 +1,5 @@
 /**
- * API Client for VMC Voice AI Backend
+ * API Client for Vadodara Municipal Corporation Complaint Center Backend
  * 
  * This module provides a centralized API client with:
  * - Automatic error handling

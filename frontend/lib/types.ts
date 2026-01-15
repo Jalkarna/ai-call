@@ -1,5 +1,5 @@
 /**
- * VMC Voice AI - TypeScript Type Definitions
+ * Vadodara Municipal Corporation Complaint Center - TypeScript Type Definitions
  * 
  * These types mirror the backend API models and ensure type safety
  * across the frontend application.

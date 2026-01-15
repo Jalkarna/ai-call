@@ -660,7 +660,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                API keys provide full access to your VMC Voice AI system. Keep them secure and never share them publicly. 
+                API keys provide full access to your Vadodara Municipal Corporation Complaint Center system. Keep them secure and never share them publicly. 
                 If you suspect a key has been compromised, regenerate it immediately. All API access is logged for security auditing.
               </p>
             </CardContent>
