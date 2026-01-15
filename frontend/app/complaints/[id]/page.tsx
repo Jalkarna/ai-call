@@ -291,7 +291,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                 <Label className="text-muted-foreground">Contact Number</Label>
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">+91 98*** **XXX</span>
+                  <span className="font-medium">+91 98765 43210</span>
                 </div>
               </div>
             </CardContent>

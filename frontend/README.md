@@ -1,4 +1,4 @@
-# VMC Voice AI - Admin Dashboard Frontend
+# Vadodara Municipal Corporation Complaint Center - Admin Dashboard Frontend
 
 A modern Next.js 16 admin dashboard for the Vadodara Municipal Corporation Voice AI Call Center System. This frontend provides real-time monitoring, complaint management, and call analytics.
 

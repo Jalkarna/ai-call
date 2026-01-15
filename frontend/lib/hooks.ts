@@ -1,5 +1,5 @@
 /**
- * Data Fetching Hooks for VMC Voice AI
+ * Data Fetching Hooks for Vadodara Municipal Corporation Complaint Center
  * 
  * These hooks provide seamless data fetching with automatic fallback to mock data
  * when the backend is unavailable. They use SWR-like patterns for caching and revalidation.

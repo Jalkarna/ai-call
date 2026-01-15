@@ -50,13 +50,13 @@ export function Sidebar({ className }: { className?: string }) {
 
   return (
     <div className={cn("pb-12 h-screen border-r bg-background flex flex-col sticky top-0", className)}>
-      <div className="p-6 border-b">
-        <h2 className="text-xl font-bold tracking-tight text-primary flex items-center gap-2">
-            <span className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center">
-                V
-            </span>
-            VMC Voice AI
-        </h2>
+      <div className="p-6 border-b flex items-center gap-3">
+        <img
+          src="/vmc-vadodara.png"
+          alt="VMC Vadodara Logo"
+          className="h-10 w-10 rounded bg-white shadow"
+        />
+        <span className="text-xl font-bold tracking-tight text-primary">Vadodara Municipal Corporation Complaint Center</span>
       </div>
       <div className="space-y-4 py-4 flex-1">
         <div className="px-3 py-2">
