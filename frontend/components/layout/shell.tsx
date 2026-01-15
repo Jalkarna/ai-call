@@ -54,9 +54,12 @@ export function Sidebar({ className }: { className?: string }) {
         <img
           src="/vmc-vadodara.png"
           alt="VMC Vadodara Logo"
-          className="h-10 w-10 rounded bg-white shadow"
+          className="h-12 w-12 rounded-md object-contain bg-white p-1 shadow-md"
         />
-        <span className="text-xl font-bold tracking-tight text-primary">Vadodara Municipal Corporation Complaint Center</span>
+        <div className="flex flex-col">
+          <span className="text-lg font-bold tracking-tight text-primary leading-tight">VMC Vadodara</span>
+          <span className="text-xs text-muted-foreground font-medium">Complaint Center</span>
+        </div>
       </div>
       <div className="space-y-4 py-4 flex-1">
         <div className="px-3 py-2">
