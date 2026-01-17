@@ -56,6 +56,19 @@ export function TranscriptTimeline({
     });
   };
 
+  // Helper to determine if entry is from AI (handle both role and speaker fields)
+  const isAI = (entry: TranscriptEntry) => {
+    const role = entry.role?.toLowerCase() || '';
+    const speaker = entry.speaker?.toLowerCase() || '';
+    return role === 'assistant' || role === 'ai' || speaker === 'ai' || speaker === 'ai agent';
+  };
+
+  // Get display name for speaker
+  const getSpeakerName = (entry: TranscriptEntry) => {
+    if (isAI(entry)) return "AI Agent";
+    return "Caller";
+  };
+
   if (entries.length === 0) {
     return (
       <div className={cn("flex items-center justify-center", className)} style={{ height }}>
@@ -70,67 +83,78 @@ export function TranscriptTimeline({
   return (
     <ScrollArea className={cn("pr-4", className)} style={{ height }}>
       <div ref={scrollRef} className="space-y-4 py-2">
-        {entries.map((entry, index) => (
-          <div
-            key={`${entry.timestamp}-${index}`}
-            className={cn(
-              "flex gap-3 p-3 rounded-lg transition-colors cursor-pointer",
-              entry.speaker === "ai" ? "bg-primary/5" : "bg-muted/50",
-              highlightedIndex === index && "ring-2 ring-primary",
-              !entry.isFinal && "opacity-70"
-            )}
-            onClick={() => onEntryClick?.(entry, index)}
-          >
-            {/* Speaker Icon */}
-            <div className={cn(
-              "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-              entry.speaker === "ai" 
-                ? "bg-primary text-primary-foreground" 
-                : "bg-muted-foreground/20"
-            )}>
-              {entry.speaker === "ai" ? (
-                <Bot className="h-4 w-4" />
-              ) : (
-                <User className="h-4 w-4" />
-              )}
-            </div>
+        {entries.map((entry, index) => {
+          const isAIMessage = isAI(entry);
+          const speakerName = getSpeakerName(entry);
+          // Only show confidence for user messages (AI always has 1.0 or 100%)
+          const showConfidence = !isAIMessage && entry.confidence !== undefined;
+          const isLowConfidence = !isAIMessage && entry.confidence !== undefined && entry.confidence < 0.7;
 
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium">
-                  {entry.speaker === "ai" ? "AI Assistant" : "Caller"}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {formatTime(entry.timestamp)}
-                </span>
-                {!entry.isFinal && (
-                  <Badge variant="outline" className="text-xs">
-                    Partial
-                  </Badge>
-                )}
-                {entry.confidence !== undefined && entry.confidence < 0.7 && (
-                  <Badge variant="secondary" className="text-xs">
-                    Low confidence
-                  </Badge>
+          return (
+            <div
+              key={`${entry.timestamp}-${index}`}
+              className={cn(
+                "flex gap-3 p-3 rounded-lg transition-colors cursor-pointer",
+                isAIMessage ? "bg-primary/5" : "bg-muted/50",
+                highlightedIndex === index && "ring-2 ring-primary",
+                !entry.isFinal && "opacity-70"
+              )}
+              onClick={() => onEntryClick?.(entry, index)}
+            >
+              {/* Speaker Icon */}
+              <div className={cn(
+                "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
+                isAIMessage 
+                  ? "bg-primary text-primary-foreground" 
+                  : "bg-muted-foreground/20"
+              )}>
+                {isAIMessage ? (
+                  <Bot className="h-4 w-4" />
+                ) : (
+                  <User className="h-4 w-4" />
                 )}
               </div>
-              <p className={cn(
-                "text-sm leading-relaxed",
-                !entry.isFinal && "italic"
-              )}>
-                {entry.text}
-              </p>
-              {entry.confidence !== undefined && (
-                <div className="mt-1">
-                  <span className="text-xs text-muted-foreground">
-                    Confidence: {Math.round(entry.confidence * 100)}%
+
+              {/* Content */}
+              <div className="flex-1 min-w-0 overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className={cn(
+                    "text-sm font-medium",
+                    isAIMessage ? "text-primary" : "text-foreground"
+                  )}>
+                    {speakerName}
                   </span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatTime(entry.timestamp)}
+                  </span>
+                  {!entry.isFinal && (
+                    <Badge variant="outline" className="text-xs">
+                      Partial
+                    </Badge>
+                  )}
+                  {isLowConfidence && (
+                    <Badge variant="secondary" className="text-xs">
+                      Low confidence
+                    </Badge>
+                  )}
                 </div>
-              )}
+                <p className={cn(
+                  "text-sm leading-relaxed break-words whitespace-pre-wrap",
+                  !entry.isFinal && "italic"
+                )}>
+                  {entry.text}
+                </p>
+                {showConfidence && (
+                  <div className="mt-1">
+                    <span className="text-xs text-muted-foreground">
+                      Confidence: {Math.round((entry.confidence || 0) * 100)}%
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={bottomRef} />
       </div>
     </ScrollArea>

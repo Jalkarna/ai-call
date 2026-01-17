@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/gemini_response.json",
+  "title": "Gemini AI Response Schema",
+  "description": "Structured output schema for VMC complaint extraction",
+  "type": "object",
+  "properties": {
+    "intent": {
+      "type": "string",
+      "enum": ["complaint", "status_check", "general_inquiry", "emergency", "unknown"],
+      "description": "Classified intent of the caller"
+    },
+    "complaint_type": {
+      "type": "string",
+      "enum": [
+        "garbage_collection",
+        "missed_collection",
+        "streetlight",
+        "water_supply",
+        "drainage",
+        "road_repair",
+        "stray_animal",
+        "encroachment",
+        "other"
+      ],
+      "description": "Type of complaint being filed"
+    },
+    "fields": {
+      "type": "object",
+      "properties": {
+        "address": {
+          "type": "string",
+          "description": "Complete street address"
+        },
+        "locality": {
+          "type": "string",
+          "description": "Area or locality name"
+        },
+        "pincode": {
+          "type": "string",
+          "pattern": "^390[0-9]{3}$",
+          "description": "6-digit Vadodara pincode"
+        },
+        "contact_number": {
+          "type": "string",
+          "pattern": "^[6-9][0-9]{9}$",
+          "description": "10-digit Indian mobile number"
+        },
+        "landmark": {
+          "type": "string",
+          "description": "Nearby landmark"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the issue"
+        }
+      }
+    },
+    "missing_fields": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["address", "locality", "pincode", "contact_number", "landmark", "description"]
+      },
+      "description": "List of required fields that are missing or have low confidence"
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+      },
+      "description": "Confidence scores for each extracted field"
+    },
+    "next_action": {
+      "type": "string",
+      "enum": ["ask", "confirm", "file", "escalate", "end"],
+      "description": "Next action to take in the conversation flow"
+    },
+    "speak": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Text to speak to the caller in their language"
+    }
+  },
+  "required": ["intent", "fields", "next_action", "speak"]
+}

@@ -9,7 +9,7 @@
 // Call Types
 // ============================================================================
 
-export type CallStatus = "processing" | "registered" | "escalated" | "failed" | "pending" | "dropped";
+export type CallStatus = "processing" | "registered" | "escalated" | "failed" | "pending" | "dropped" | "active" | "completed";
 
 export type SentimentType = "positive" | "neutral" | "negative" | "frustrated";
 
@@ -29,7 +29,8 @@ export interface CallLog {
 
 export interface TranscriptEntry {
   timestamp: string;
-  speaker: "user" | "ai";
+  speaker: string;  // "Caller" or "AI Agent"
+  role?: string;    // "user" or "assistant"
   text: string;
   isFinal: boolean;
   confidence?: number;
@@ -125,7 +126,11 @@ export type WebSocketEventType =
   | "complaint_created"
   | "complaint_updated"
   | "escalation"
-  | "system_alert";
+  | "system_alert"
+  | "active_calls_update"
+  | "final_transcript"
+  | "speak_action"
+  | "system_state";
 
 export interface WebSocketEvent<T = unknown> {
   type: WebSocketEventType;

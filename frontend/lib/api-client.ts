@@ -58,7 +58,7 @@ async function apiRequest<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const defaultHeaders: HeadersInit = {
     "Content-Type": "application/json",
   };
@@ -106,17 +106,45 @@ export async function checkHealth(): Promise<HealthStatus> {
   return apiRequest<HealthStatus>("/health");
 }
 
+
 /**
- * Check if backend is reachable (returns true/false, doesn't throw)
+ * Check if backend is reachable using WebSocket status with HTTP fallback
  */
 export async function isBackendAvailable(): Promise<boolean> {
-  try {
-    await fetchWithTimeout(`${API_BASE_URL}/health`, {}, 3000);
-    return true;
-  } catch {
-    return false;
+  if (typeof window !== "undefined") {
+    try {
+      // First check WebSocket status
+      const { getGlobalWebSocketManager } = await import("./websocket");
+      const manager = getGlobalWebSocketManager();
+      const wsStatus = manager.getStatus();
+      
+      // If WebSocket is connected, backend is definitely available
+      if (wsStatus === "connected") {
+        return true;
+      }
+      
+      // If WebSocket is connecting or disconnected, try HTTP health check as fallback
+      // This handles the case where WebSocket hasn't connected yet but HTTP works
+      try {
+        const response = await fetchWithTimeout(`${API_BASE_URL}/health`, {}, 3000);
+        return response.ok;
+      } catch {
+        return false;
+      }
+    } catch {
+      return false;
+    }
   }
+  return false;
 }
+
+/**
+ * Force backend status refresh (no-op now, kept for compatibility)
+ */
+export function refreshBackendStatus() {
+  // WebSocket handles connection status automatically
+}
+
 
 // ============================================================================
 // Calls API
@@ -127,14 +155,24 @@ export interface CallLogResponse {
   session_id: string;
   caller: string;
   location?: string;
-  called_at: string;
+  called_at: string; // Assuming mapped from start_time
   ended_at?: string;
   duration_seconds?: number;
+  duration?: string; // Formatted duration
   status: string;
+  status_display?: string; // Display-friendly status
   intent?: string;
   language?: string;
+  language_display?: string; // Display-friendly language
   sentiment?: string;
-  transcript?: string;
+  transcript?: any[]; // Array of entries
+  transcripts?: any[]; // Backend name might be plural
+  complaints?: any[];
+  confidence_scores?: Record<string, number>;
+  confidenceScores?: Record<string, number>; // camelCase version
+  current_form?: Record<string, any>;
+  extractedFields?: Record<string, any>; // New API field
+  recording_url?: string;
 }
 
 export interface CallListResponse {
@@ -156,17 +194,30 @@ export interface CallFilters {
 /**
  * Fetch paginated call logs
  */
+/**
+ * Fetch paginated call logs
+ */
 export async function fetchCalls(filters: CallFilters = {}): Promise<CallListResponse> {
   const params = new URLSearchParams();
-  if (filters.page) params.set("page", filters.page.toString());
-  if (filters.pageSize) params.set("page_size", filters.pageSize.toString());
+  const limit = filters.pageSize || 10;
+  const page = filters.page || 1;
+  const offset = (page - 1) * limit;
+
+  params.set("offset", offset.toString());
+  params.set("limit", limit.toString());
   if (filters.status) params.set("status", filters.status);
   if (filters.language) params.set("language", filters.language);
   if (filters.sentiment) params.set("sentiment", filters.sentiment);
   if (filters.search) params.set("search", filters.search);
 
   const query = params.toString();
-  return apiRequest<CallListResponse>(`/api/calls${query ? `?${query}` : ""}`);
+  try {
+    const response = await apiRequest<CallListResponse>(`/api/calls/history${query ? `?${query}` : ""}`);
+    return response;
+  } catch (error) {
+    console.error("fetchCalls error", error);
+    throw error;
+  }
 }
 
 /**
@@ -235,22 +286,66 @@ export interface ComplaintUpdateRequest {
  */
 export async function fetchComplaints(filters: ComplaintFilters = {}): Promise<ComplaintListResponse> {
   const params = new URLSearchParams();
-  if (filters.page) params.set("page", filters.page.toString());
-  if (filters.pageSize) params.set("page_size", filters.pageSize.toString());
+  const limit = filters.pageSize || 10;
+  const page = filters.page || 1;
+  const skip = (page - 1) * limit;
+
+  params.set("skip", skip.toString());
+  params.set("limit", limit.toString());
   if (filters.status) params.set("status", filters.status);
   if (filters.urgency) params.set("urgency", filters.urgency);
   if (filters.category) params.set("category", filters.category);
   if (filters.search) params.set("search", filters.search);
 
   const query = params.toString();
-  return apiRequest<ComplaintListResponse>(`/api/complaints${query ? `?${query}` : ""}`);
+  try {
+    const rawComplaints = await apiRequest<any[]>(`/api/complaints${query ? `?${query}` : ""}`);
+    // Backend returns list, wrapper needed for PaginatedResponse format expected by hooks
+    return {
+      items: rawComplaints.map((c: any) => ({
+        id: c.id,
+        ticket_number: c.ticket_id,
+        category: c.complaint_type,
+        description: c.description,
+        location: c.address,
+        contact_number: c.contact_number,
+        pincode: c.pincode,
+        status: c.status,
+        urgency: c.urgency,
+        created_at: c.created_at,
+        updated_at: c.updated_at,
+        assigned_to: c.assigned_to,
+      })),
+      total: rawComplaints.length, // TODO: Backend should return total count for pagination
+      page: page,
+      page_size: limit
+    };
+  } catch (error) {
+    console.error("fetchComplaints error", error);
+    throw error;
+  }
 }
 
 /**
  * Fetch single complaint details
  */
 export async function fetchComplaintById(complaintId: string): Promise<ComplaintResponse> {
-  return apiRequest<ComplaintResponse>(`/api/complaints/${complaintId}`);
+  const raw = await apiRequest<any>(`/api/complaints/${complaintId}`);
+  // Transform backend response to frontend format
+  return {
+    id: raw.id,
+    ticket_number: raw.ticket_id,
+    category: raw.complaint_type,
+    description: raw.description,
+    location: raw.address,
+    contact_number: raw.contact_number,
+    pincode: raw.pincode,
+    status: raw.status,
+    urgency: raw.urgency,
+    created_at: raw.created_at,
+    updated_at: raw.updated_at,
+    assigned_to: raw.assigned_to,
+  };
 }
 
 /**
@@ -303,12 +398,31 @@ export interface AnalyticsFilters {
  */
 export async function fetchAnalytics(filters: AnalyticsFilters = {}): Promise<AnalyticsResponse> {
   const params = new URLSearchParams();
-  if (filters.startDate) params.set("start_date", filters.startDate);
-  if (filters.endDate) params.set("end_date", filters.endDate);
-  if (filters.period) params.set("period", filters.period);
+  if (filters.period) params.set("time_range", filters.period);
 
   const query = params.toString();
-  return apiRequest<AnalyticsResponse>(`/api/admin/analytics${query ? `?${query}` : ""}`);
+  try {
+    const stats = await apiRequest<any>(`/api/admin/stats${query ? `?${query}` : ""}`);
+
+    // Map backend response to AnalyticsResponse
+    // Note: Backend stats are simpler than what frontend expects, filling gaps with 0
+    return {
+      total_calls: stats.total_calls,
+      total_complaints: stats.filed_complaints,
+      avg_handle_time_seconds: stats.avg_call_duration_seconds,
+      resolution_rate: stats.completed_calls / (stats.total_calls || 1) * 100,
+
+      // Mocking detailed breakdown until backend supports it
+      calls_by_language: { "Hindi": stats.total_calls },
+      complaints_by_category: { "Other": stats.filed_complaints },
+      complaints_by_status: { "Open": stats.filed_complaints },
+      hourly_call_volume: [],
+      daily_trend: []
+    };
+  } catch (error) {
+    console.error("fetchAnalytics error", error);
+    throw error;
+  }
 }
 
 // ============================================================================

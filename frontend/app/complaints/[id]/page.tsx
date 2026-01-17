@@ -1,4 +1,3 @@
-
 "use client";
 
 import { use, useState } from "react";
@@ -28,10 +27,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { 
-  MapPin, 
-  Calendar, 
-  User, 
+import {
+  MapPin,
+  User,
   ArrowLeft,
   Phone,
   Edit,
@@ -41,27 +39,16 @@ import {
   Clock,
   FileText
 } from "lucide-react";
-import { MOCK_COMPLAINTS } from "@/lib/mock-data";
-import { ConfidenceIndicator, ConfidenceBadge } from "@/components/confidence-indicator";
-
-// Mock confidence scores for demo
-const MOCK_CONFIDENCE_SCORES: Record<string, number> = {
-  category: 0.92,
-  location: 0.88,
-  description: 0.85,
-  urgency: 0.78,
-};
+import { useComplaint } from "@/lib/hooks";
 
 export default function ComplaintDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { data: complaint, isLoading } = useComplaint(id);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editedFields, setEditedFields] = useState<Record<string, string>>({});
-  
-  let complaint = MOCK_COMPLAINTS.find(c => c.id === id);
-  if (!complaint && MOCK_COMPLAINTS.length > 0) {
-    complaint = MOCK_COMPLAINTS[0];
-  }
 
+  if (isLoading) return <div className="p-8">Loading complaint details...</div>;
   if (!complaint) return notFound();
 
   const handleFieldChange = (field: string, value: string) => {
@@ -95,7 +82,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
               <span className="text-2xl font-bold tracking-tight">{complaint.ticketNumber}</span>
               <Badge variant={
                 complaint.status === "Resolved" ? "default" :
-                complaint.status === "In Progress" ? "secondary" : "outline"
+                  complaint.status === "In Progress" ? "secondary" : "outline"
               }>
                 {complaint.status}
               </Badge>
@@ -104,7 +91,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              Registered via Voice AI • {format(new Date(complaint.timestamp), "MMM d, yyyy 'at' h:mm a")}
+              Registered via Voice AI • {complaint.createdAt ? format(new Date(complaint.createdAt), "MMM d, yyyy 'at' h:mm a") : 'Unknown'}
             </p>
           </div>
         </div>
@@ -126,7 +113,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                 <Edit className="h-4 w-4 mr-2" />
                 Edit Fields
               </Button>
-              <StatusUpdateDialog 
+              <StatusUpdateDialog
                 currentStatus={complaint.status}
                 onUpdate={(status) => console.log("Update status:", status)}
               />
@@ -153,10 +140,9 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Category</Label>
-                  <ConfidenceBadge confidence={MOCK_CONFIDENCE_SCORES.category} />
                 </div>
                 {isEditing ? (
-                  <Select 
+                  <Select
                     value={editedFields.category || complaint.category}
                     onValueChange={(value) => handleFieldChange("category", value)}
                   >
@@ -176,21 +162,15 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                 ) : (
                   <p className="font-medium">{complaint.category}</p>
                 )}
-                <ConfidenceIndicator 
-                  confidence={MOCK_CONFIDENCE_SCORES.category} 
-                  showPercentage={false}
-                  size="sm"
-                />
               </div>
 
               {/* Urgency */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label>Urgency</Label>
-                  <ConfidenceBadge confidence={MOCK_CONFIDENCE_SCORES.urgency} />
                 </div>
                 {isEditing ? (
-                  <Select 
+                  <Select
                     value={editedFields.urgency || complaint.urgency}
                     onValueChange={(value) => handleFieldChange("urgency", value)}
                   >
@@ -209,18 +189,12 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                     {complaint.urgency}
                   </Badge>
                 )}
-                <ConfidenceIndicator 
-                  confidence={MOCK_CONFIDENCE_SCORES.urgency} 
-                  showPercentage={false}
-                  size="sm"
-                />
               </div>
 
               {/* Location */}
               <div className="space-y-2 md:col-span-2">
                 <div className="flex items-center justify-between">
                   <Label>Location</Label>
-                  <ConfidenceBadge confidence={MOCK_CONFIDENCE_SCORES.location} />
                 </div>
                 {isEditing ? (
                   <Input
@@ -233,18 +207,12 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                     <span className="font-medium">{complaint.location}</span>
                   </div>
                 )}
-                <ConfidenceIndicator 
-                  confidence={MOCK_CONFIDENCE_SCORES.location} 
-                  showPercentage={false}
-                  size="sm"
-                />
               </div>
 
               {/* Description */}
               <div className="space-y-2 md:col-span-2">
                 <div className="flex items-center justify-between">
                   <Label>Description</Label>
-                  <ConfidenceBadge confidence={MOCK_CONFIDENCE_SCORES.description} />
                 </div>
                 {isEditing ? (
                   <Textarea
@@ -257,14 +225,9 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                     {complaint.description}
                   </p>
                 )}
-                <ConfidenceIndicator 
-                  confidence={MOCK_CONFIDENCE_SCORES.description} 
-                  showPercentage={false}
-                  size="sm"
-                />
               </div>
             </CardContent>
-            
+
             {isEditing && (
               <CardFooter className="bg-muted/30 border-t">
                 <p className="text-xs text-muted-foreground">
@@ -310,15 +273,15 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                 <TimelineItem
                   icon={<FileText className="h-3 w-3" />}
                   title="Complaint Registered"
-                  timestamp={format(new Date(complaint.timestamp), "MMM d, h:mm a")}
+                  timestamp={complaint.createdAt ? format(new Date(complaint.createdAt), "MMM d, h:mm a") : ''}
                   description="Registered via AI Voice Assistant"
                   isFirst
                 />
                 <TimelineItem
                   icon={<CheckCircle className="h-3 w-3" />}
                   title="AI Analysis Completed"
-                  timestamp={format(new Date(complaint.timestamp), "MMM d, h:mm a")}
-                  description="All fields extracted with high confidence"
+                  timestamp={complaint.createdAt ? format(new Date(complaint.createdAt), "MMM d, h:mm a") : ''}
+                  description="All fields extracted"
                 />
                 {complaint.assignedTo && (
                   <TimelineItem
@@ -350,41 +313,6 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
             </CardContent>
           </Card>
 
-          {/* Confidence Summary */}
-          <Card>
-            <CardHeader>
-              <CardTitle>AI Confidence Summary</CardTitle>
-              <CardDescription>Overall extraction accuracy</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {Object.entries(MOCK_CONFIDENCE_SCORES).map(([field, confidence]) => (
-                <div key={field} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm capitalize">{field}</span>
-                    <span className="text-sm font-medium">{Math.round(confidence * 100)}%</span>
-                  </div>
-                  <ConfidenceIndicator 
-                    confidence={confidence}
-                    showPercentage={false}
-                    size="sm"
-                  />
-                </div>
-              ))}
-              <Separator />
-              <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Overall</span>
-                  <span className="text-sm font-bold">86%</span>
-                </div>
-                <ConfidenceIndicator 
-                  confidence={0.86}
-                  showPercentage={false}
-                  size="lg"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Source Call Link */}
           <Card>
             <CardHeader>
@@ -392,7 +320,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
             </CardHeader>
             <CardContent>
               <Button variant="outline" className="w-full" asChild>
-                <Link href={`/calls/${complaint.id}`}>
+                <Link href={`/calls/${complaint.id}`} prefetch={false}>
                   <Phone className="h-4 w-4 mr-2" />
                   View Original Call
                 </Link>
@@ -416,20 +344,19 @@ interface TimelineItemProps {
   isSuccess?: boolean;
 }
 
-function TimelineItem({ 
-  icon, 
-  title, 
-  timestamp, 
+function TimelineItem({
+  icon,
+  title,
+  timestamp,
   description,
   isFirst,
   isLast,
-  isSuccess 
+  isSuccess
 }: TimelineItemProps) {
   return (
     <div className="relative">
-      <div className={`absolute -left-[29px] top-1 h-3 w-3 rounded-full flex items-center justify-center ${
-        isFirst ? "bg-primary" : isSuccess ? "bg-green-500" : "bg-muted border border-background"
-      }`}>
+      <div className={`absolute -left-[29px] top-1 h-3 w-3 rounded-full flex items-center justify-center ${isFirst ? "bg-primary" : isSuccess ? "bg-green-500" : "bg-muted border border-background"
+        }`}>
         {icon}
       </div>
       <div>

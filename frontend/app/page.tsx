@@ -10,11 +10,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Activity, 
-  Phone, 
-  ClipboardList, 
-  AlertTriangle, 
+import {
+  Activity,
+  Phone,
+  ClipboardList,
+  AlertTriangle,
   ArrowUpRight,
   PhoneCall,
   PhoneOff,
@@ -26,11 +26,11 @@ import {
   Headphones
 } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line } from 'recharts';
-import { MOCK_CALLS, MOCK_COMPLAINTS } from "@/lib/mock-data";
 import { useDashboardStats, useCalls, useComplaints, useBackendStatus } from "@/lib/hooks";
+import { useActiveCalls } from "@/lib/websocket";
 import { format } from "date-fns";
 
-// Mock hourly call data
+// Mock hourly call data - Keep for chart visual for now, or fetch from analytics if available
 const hourlyData = [
   { time: '00:00', calls: 12, completed: 10, dropped: 2 },
   { time: '02:00', calls: 8, completed: 7, dropped: 1 },
@@ -46,13 +46,6 @@ const hourlyData = [
   { time: '22:00', calls: 20, completed: 19, dropped: 1 },
 ];
 
-// Mock live calls for real-time display
-const MOCK_LIVE_CALLS = [
-  { id: "live-1", callerId: "+91 98765 43210", duration: "2:34", status: "active", intent: "Garbage Collection", language: "Hindi", sentiment: "Neutral" },
-  { id: "live-2", callerId: "+91 87654 32109", duration: "1:12", status: "active", intent: "Water Supply", language: "Gujarati", sentiment: "Frustrated" },
-  { id: "live-3", callerId: "+91 76543 21098", duration: "0:45", status: "processing", intent: "Streetlight Issue", language: "Hindi", sentiment: "Neutral" },
-];
-
 // Stats type
 interface DashboardStats {
   totalCalls: number;
@@ -66,26 +59,29 @@ interface DashboardStats {
 }
 
 export default function Dashboard() {
-  // Use hooks for data fetching with automatic fallback
+  // Use hooks for data fetching
   const { isAvailable: backendAvailable, isChecking: checkingBackend } = useBackendStatus();
   const dashboardStats = useDashboardStats();
-  const { data: recentCallsData, isFromBackend: callsFromBackend } = useCalls({ pageSize: 5 });
-  const { data: complaintsData, isFromBackend: complaintsFromBackend } = useComplaints({ pageSize: 20 });
+  const { data: recentCallsData } = useCalls({ pageSize: 5 });
+  const { data: complaintsData } = useComplaints({ pageSize: 20 });
+
+  // Real-time active calls
+  const liveCalls = useActiveCalls();
 
   // Derived data
-  const recentCalls = recentCallsData || MOCK_CALLS.slice(0, 5);
-  const allComplaints = complaintsData || MOCK_COMPLAINTS;
+  const recentCalls = recentCallsData || [];
+  const allComplaints = complaintsData || [];
   const urgentComplaints = allComplaints.filter(c => c.urgency === "High" || c.urgency === "Critical").slice(0, 5);
 
   const [stats, setStats] = useState<DashboardStats>({
-    totalCalls: 1248,
-    completedCalls: 1186,
-    droppedCalls: 62,
-    complaintsRegistered: 384,
-    avgHandleTime: "3:42",
-    aiAccuracy: 92.4,
-    activeCalls: 3,
-    queuedCalls: 2,
+    totalCalls: 0,
+    completedCalls: 0,
+    droppedCalls: 0,
+    complaintsRegistered: 0,
+    avgHandleTime: "0:00",
+    aiAccuracy: 0,
+    activeCalls: 0,
+    queuedCalls: 0,
   });
 
   // Update stats from backend when available
@@ -98,32 +94,22 @@ export default function Dashboard() {
         complaintsRegistered: dashboardStats.data.totalComplaints,
         avgHandleTime: dashboardStats.data.avgHandleTime,
         aiAccuracy: 92.4,
-        activeCalls: dashboardStats.data.activeCalls,
-        queuedCalls: 2,
+        activeCalls: liveCalls.length || dashboardStats.data.activeCalls,
+        queuedCalls: 0,
       });
     }
-  }, [dashboardStats.data]);
-  
-  const [liveCalls, setLiveCalls] = useState(MOCK_LIVE_CALLS);
+  }, [dashboardStats.data, liveCalls.length]);
 
-  // Simulate live call updates
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  // Initialize last updated time on client only to avoid hydration mismatch
   useEffect(() => {
+    setLastUpdated(format(new Date(), "HH:mm:ss"));
     const interval = setInterval(() => {
-      setLiveCalls(prev => prev.map(call => ({
-        ...call,
-        duration: incrementDuration(call.duration),
-      })));
+      setLastUpdated(format(new Date(), "HH:mm:ss"));
     }, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  function incrementDuration(duration: string): string {
-    const [mins, secs] = duration.split(":").map(Number);
-    const totalSecs = mins * 60 + secs + 1;
-    const newMins = Math.floor(totalSecs / 60);
-    const newSecs = totalSecs % 60;
-    return `${newMins}:${newSecs.toString().padStart(2, "0")}`;
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -151,8 +137,26 @@ export default function Dashboard() {
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="gap-1">
             <Activity className="h-3 w-3" />
-            Last updated: {format(new Date(), "HH:mm:ss")}
+            Last updated: {lastUpdated ?? "--:--:--"}
           </Badge>
+          {process.env.NODE_ENV === 'development' && (
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={async () => {
+                try {
+                  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                  const response = await fetch(`${API_BASE}/api/calls/test/simulate-call`, { method: 'POST' });
+                  const data = await response.json();
+                  console.log('Simulation started:', data);
+                } catch (error) {
+                  console.error('Simulation failed:', error);
+                }
+              }}
+            >
+              Test Call
+            </Button>
+          )}
         </div>
       </div>
 
@@ -179,7 +183,7 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Complaints Registered</CardTitle>
@@ -192,14 +196,14 @@ export default function Dashboard() {
               <p className="text-xs text-muted-foreground">{stats.aiAccuracy}% AI Accuracy</p>
             </div>
             <div className="w-full bg-muted h-1.5 rounded-full mt-2">
-              <div 
-                className="bg-green-500 h-1.5 rounded-full" 
+              <div
+                className="bg-green-500 h-1.5 rounded-full"
                 style={{ width: `${stats.aiAccuracy}%` }}
               />
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Avg. Handle Time</CardTitle>
@@ -242,12 +246,12 @@ export default function Dashboard() {
                 <AreaChart data={hourlyData}>
                   <defs>
                     <linearGradient id="colorCalls" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <XAxis dataKey="time" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
@@ -261,7 +265,7 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-        
+
         {/* Live Calls Panel */}
         <Card>
           <CardHeader className="pb-3">
@@ -279,40 +283,45 @@ export default function Dashboard() {
           <CardContent>
             <ScrollArea className="h-[220px]">
               <div className="space-y-4">
-                {liveCalls.map((call) => (
-                  <div key={call.id} className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
-                    <div className={`p-2 rounded-full ${
-                      call.status === "active" ? "bg-green-100 dark:bg-green-900" : "bg-yellow-100 dark:bg-yellow-900"
-                    }`}>
-                      {call.status === "active" ? (
-                        <PhoneCall className="h-4 w-4 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <PhoneIncoming className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm truncate">{call.callerId}</span>
-                        <span className="text-sm font-mono text-muted-foreground">{call.duration}</span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="outline" className="text-xs">{call.intent}</Badge>
-                        <span className="text-xs text-muted-foreground">{call.language}</span>
-                      </div>
-                      <div className="flex items-center justify-between mt-2">
-                        <Badge variant={
-                          call.sentiment === "Frustrated" ? "destructive" : 
-                          call.sentiment === "Positive" ? "default" : "secondary"
-                        } className="text-xs">
-                          {call.sentiment}
-                        </Badge>
-                        <Button size="sm" variant="ghost" className="h-6 text-xs" asChild>
-                          <Link href={`/calls/${call.id}`}>Monitor</Link>
-                        </Button>
-                      </div>
-                    </div>
+                {liveCalls.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8">
+                    No active calls
                   </div>
-                ))}
+                ) : (
+                  liveCalls.map((call) => (
+                    <div key={call.id || call.session_id} className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
+                      <div className={`p-2 rounded-full ${call.status === "active" ? "bg-green-100 dark:bg-green-900" : "bg-yellow-100 dark:bg-yellow-900"
+                        }`}>
+                        {call.status === "active" ? (
+                          <PhoneCall className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        ) : (
+                          <PhoneIncoming className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm truncate">{call.callerId || call.caller_number}</span>
+                          <span className="text-sm font-mono text-muted-foreground">{call.duration}</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="outline" className="text-xs">{call.intent}</Badge>
+                          <span className="text-xs text-muted-foreground">{call.language}</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-2">
+                          <Badge variant={
+                            call.sentiment === "Frustrated" ? "destructive" :
+                              call.sentiment === "Positive" ? "default" : "secondary"
+                          } className="text-xs">
+                            {call.sentiment}
+                          </Badge>
+                          <Button size="sm" variant="ghost" className="h-6 text-xs" asChild>
+                            <Link href={`/calls/${call.id || call.session_id}`}>Monitor</Link>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </ScrollArea>
           </CardContent>
@@ -337,9 +346,8 @@ export default function Dashboard() {
             <div className="space-y-4">
               {recentCalls.map((call) => (
                 <div className="flex items-center gap-4" key={call.id}>
-                  <div className={`p-2 rounded-full ${
-                    call.status === "Dropped" ? "bg-red-100 dark:bg-red-900" : "bg-green-100 dark:bg-green-900"
-                  }`}>
+                  <div className={`p-2 rounded-full ${call.status === "Dropped" ? "bg-red-100 dark:bg-red-900" : "bg-green-100 dark:bg-green-900"
+                    }`}>
                     {call.status === "Dropped" ? (
                       <PhoneOff className="h-4 w-4 text-red-600 dark:text-red-400" />
                     ) : (

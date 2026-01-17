@@ -1,243 +1,316 @@
 /**
- * Vadodara Municipal Corporation Complaint Center - WebSocket Hook
+ * Global WebSocket Manager for VMC AI Call Center
  * 
- * React hook for managing WebSocket connections to the backend
- * for real-time updates on calls, complaints, and system events.
+ * Provides a single WebSocket connection that all components can subscribe to.
+ * Eliminates reconnection storms and excessive connections.
  */
 
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
 import type { WebSocketEvent, WebSocketEventType } from "./types";
 
-// WebSocket URL - configure via environment variable
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+
+type EventCallback = (event: WebSocketEvent) => void;
+type StatusCallback = (status: ConnectionStatus) => void;
 
 export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "error";
 
-export interface UseWebSocketOptions {
-  /** WebSocket endpoint path (e.g., "/api/calls/live") */
-  endpoint: string;
-  /** Auto-reconnect on disconnect */
-  autoReconnect?: boolean;
-  /** Reconnect interval in milliseconds */
-  reconnectInterval?: number;
-  /** Maximum reconnection attempts */
-  maxReconnectAttempts?: number;
+class GlobalWebSocketManager {
+  private ws: WebSocket | null = null;
+  private endpoint: string = "/ws/dashboard";
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 10;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectDelay = 3000;
+  private status: ConnectionStatus = "disconnected";
+  
+  // Subscribers
+  private eventSubscribers: Map<string, EventCallback> = new Map();
+  private statusSubscribers: Map<string, StatusCallback> = new Map();
+  
+  constructor() {
+    if (typeof window !== "undefined") {
+      this.connect();
+    }
+  }
+
+  private connect() {
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    this.setStatus("connecting");
+    const wsUrl = `${WS_BASE_URL}${this.endpoint}`;
+    
+    try {
+      this.ws = new WebSocket(wsUrl);
+
+      this.ws.onopen = () => {
+        console.log("✅ WebSocket connected");
+        this.reconnectAttempts = 0;
+        this.setStatus("connected");
+      };
+
+      this.ws.onclose = () => {
+        console.log("🔌 WebSocket disconnected");
+        this.setStatus("disconnected");
+        this.scheduleReconnect();
+      };
+
+      this.ws.onerror = (error: Event) => {
+        console.error("❌ WebSocket error:", error);
+        this.setStatus("error");
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as WebSocketEvent;
+          this.notifyEventSubscribers(data);
+        } catch (err) {
+          console.error("Failed to parse WebSocket message:", event.data);
+        }
+      };
+    } catch (err) {
+      console.error("Failed to create WebSocket:", err);
+      this.setStatus("error");
+      this.scheduleReconnect();
+    }
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log("⚠️ Max reconnection attempts reached");
+      return;
+    }
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1);
+    
+    console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    
+    this.reconnectTimeout = setTimeout(() => {
+      this.connect();
+    }, delay);
+  }
+
+  private setStatus(status: ConnectionStatus) {
+    this.status = status;
+    this.notifyStatusSubscribers(status);
+  }
+
+  private notifyEventSubscribers(event: WebSocketEvent) {
+    this.eventSubscribers.forEach((callback) => {
+      try {
+        callback(event);
+      } catch (err) {
+        console.error("Error in event subscriber:", err);
+      }
+    });
+  }
+
+  private notifyStatusSubscribers(status: ConnectionStatus) {
+    this.statusSubscribers.forEach((callback) => {
+      try {
+        callback(status);
+      } catch (err) {
+        console.error("Error in status subscriber:", err);
+      }
+    });
+  }
+
+  // Public API
+  subscribe(id: string, callback: EventCallback): () => void {
+    this.eventSubscribers.set(id, callback);
+    return () => {
+      this.eventSubscribers.delete(id);
+    };
+  }
+
+  subscribeStatus(id: string, callback: StatusCallback): () => void {
+    this.statusSubscribers.set(id, callback);
+    // Immediately call with current status
+    callback(this.status);
+    return () => {
+      this.statusSubscribers.delete(id);
+    };
+  }
+
+  getStatus(): ConnectionStatus {
+    return this.status;
+  }
+
+  send(data: unknown) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data));
+    } else {
+      console.warn("WebSocket is not connected");
+    }
+  }
+
+  disconnect() {
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+    this.reconnectAttempts = this.maxReconnectAttempts;
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.setStatus("disconnected");
+  }
+}
+
+// Singleton instance
+let globalManager: GlobalWebSocketManager | null = null;
+
+export function getGlobalWebSocketManager(): GlobalWebSocketManager {
+  if (!globalManager && typeof window !== "undefined") {
+    globalManager = new GlobalWebSocketManager();
+  }
+  return globalManager!;
+}
+
+// React Hook
+import { useEffect, useState, useRef } from "react";
+
+export interface UseGlobalWebSocketOptions {
   /** Event types to filter for */
   eventTypes?: WebSocketEventType[];
   /** Session ID to filter events for */
   sessionId?: string;
-  /** Callback when connected */
-  onConnect?: () => void;
-  /** Callback when disconnected */
-  onDisconnect?: () => void;
-  /** Callback on error */
-  onError?: (error: Event) => void;
+  /** Enabled state (allows conditional usage) */
+  enabled?: boolean;
 }
 
-export interface UseWebSocketReturn<T = unknown> {
-  /** Current connection status */
+export interface UseGlobalWebSocketReturn<T = unknown> {
   status: ConnectionStatus;
-  /** Last received event */
   lastEvent: WebSocketEvent<T> | null;
-  /** All received events (limited buffer) */
   events: WebSocketEvent<T>[];
-  /** Send a message through the WebSocket */
   send: (data: unknown) => void;
-  /** Manually connect */
-  connect: () => void;
-  /** Manually disconnect */
-  disconnect: () => void;
-  /** Clear events buffer */
   clearEvents: () => void;
 }
 
 const MAX_EVENTS_BUFFER = 100;
 
-export function useWebSocket<T = unknown>(
-  options: UseWebSocketOptions
-): UseWebSocketReturn<T> {
-  const {
-    endpoint,
-    autoReconnect = true,
-    reconnectInterval = 3000,
-    maxReconnectAttempts = 10,
-    eventTypes,
-    sessionId,
-    onConnect,
-    onDisconnect,
-    onError,
-  } = options;
-
+export function useGlobalWebSocket<T = unknown>(
+  options: UseGlobalWebSocketOptions = {}
+): UseGlobalWebSocketReturn<T> {
+  const { eventTypes, sessionId, enabled = true } = options;
+  
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [lastEvent, setLastEvent] = useState<WebSocketEvent<T> | null>(null);
   const [events, setEvents] = useState<WebSocketEvent<T>[]>([]);
+  
+  const subscriberIdRef = useRef(`sub_${Math.random().toString(36).substr(2, 9)}`);
 
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const connect = useCallback(() => {
-    // Don't connect if already connected or connecting
-    if (wsRef.current?.readyState === WebSocket.OPEN || 
-        wsRef.current?.readyState === WebSocket.CONNECTING) {
-      return;
-    }
-
-    setStatus("connecting");
-
-    const wsUrl = `${WS_BASE_URL}${endpoint}`;
-    const ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      setStatus("connected");
-      reconnectAttemptsRef.current = 0;
-      onConnect?.();
-    };
-
-    ws.onclose = () => {
-      setStatus("disconnected");
-      onDisconnect?.();
-
-      // Auto-reconnect if enabled
-      if (autoReconnect && reconnectAttemptsRef.current < maxReconnectAttempts) {
-        reconnectAttemptsRef.current += 1;
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, reconnectInterval);
-      }
-    };
-
-    ws.onerror = (error) => {
-      setStatus("error");
-      onError?.(error);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as WebSocketEvent<T>;
-
-        // Filter by event type if specified
-        if (eventTypes && !eventTypes.includes(data.type)) {
-          return;
-        }
-
-        // Filter by session ID if specified
-        if (sessionId && data.sessionId !== sessionId) {
-          return;
-        }
-
-        setLastEvent(data);
-        setEvents((prev) => {
-          const newEvents = [data, ...prev];
-          // Keep buffer limited
-          if (newEvents.length > MAX_EVENTS_BUFFER) {
-            return newEvents.slice(0, MAX_EVENTS_BUFFER);
-          }
-          return newEvents;
-        });
-      } catch {
-        console.error("Failed to parse WebSocket message:", event.data);
-      }
-    };
-
-    wsRef.current = ws;
-  }, [endpoint, autoReconnect, reconnectInterval, maxReconnectAttempts, eventTypes, sessionId, onConnect, onDisconnect, onError]);
-
-  const disconnect = useCallback(() => {
-    // Clear any pending reconnect
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-
-    // Reset reconnect attempts
-    reconnectAttemptsRef.current = maxReconnectAttempts;
-
-    // Close the connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    setStatus("disconnected");
-  }, [maxReconnectAttempts]);
-
-  const send = useCallback((data: unknown) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(data));
-    } else {
-      console.warn("WebSocket is not connected");
-    }
-  }, []);
-
-  const clearEvents = useCallback(() => {
-    setEvents([]);
-    setLastEvent(null);
-  }, []);
-
-  // Connect on mount, disconnect on unmount
   useEffect(() => {
-    connect();
+    if (!enabled) return;
+
+    const manager = getGlobalWebSocketManager();
+    const id = subscriberIdRef.current;
+
+    // Subscribe to status updates
+    const unsubscribeStatus = manager.subscribeStatus(id, setStatus);
+
+    // Subscribe to events
+    const unsubscribeEvents = manager.subscribe(id, (event) => {
+      // Filter by event type
+      if (eventTypes && !eventTypes.includes(event.type)) {
+        return;
+      }
+
+      // Filter by session ID
+      if (sessionId && event.sessionId !== sessionId) {
+        return;
+      }
+
+      setLastEvent(event as WebSocketEvent<T>);
+      setEvents((prev) => {
+        const newEvents = [event as WebSocketEvent<T>, ...prev];
+        return newEvents.slice(0, MAX_EVENTS_BUFFER);
+      });
+    });
 
     return () => {
-      disconnect();
+      unsubscribeStatus();
+      unsubscribeEvents();
     };
-  }, [connect, disconnect]);
+  }, [eventTypes, sessionId, enabled]);
+
+  const send = (data: unknown) => {
+    const manager = getGlobalWebSocketManager();
+    manager.send(data);
+  };
+
+  const clearEvents = () => {
+    setEvents([]);
+    setLastEvent(null);
+  };
 
   return {
     status,
     lastEvent,
     events,
     send,
-    connect,
-    disconnect,
     clearEvents,
   };
 }
 
-// ============================================================================
 // Specialized Hooks
-// ============================================================================
 
-/**
- * Hook for live call feed updates
- */
 export function useLiveCallFeed() {
-  return useWebSocket({
-    endpoint: "/api/calls/live",
-    eventTypes: ["call_started", "call_updated", "call_ended", "escalation"],
+  return useGlobalWebSocket({
+    eventTypes: ["active_calls_update", "call_started", "call_ended", "escalation"],
   });
 }
 
-/**
- * Hook for specific call session updates
- */
-export function useCallSession(sessionId: string) {
-  return useWebSocket({
-    endpoint: "/api/calls/live",
+export function useActiveCalls() {
+  const { lastEvent } = useLiveCallFeed();
+  const [activeCalls, setActiveCalls] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (lastEvent && lastEvent.type === "active_calls_update") {
+      const data = lastEvent.data as any;
+      // Handle both data.data and direct data formats
+      const callsArray = data.data || data || [];
+      setActiveCalls(callsArray);
+    }
+  }, [lastEvent]);
+
+  return activeCalls;
+}
+
+export function useCallSession(sessionId: string, enabled = true) {
+  return useGlobalWebSocket({
+    eventTypes: [
+      "active_calls_update",
+      "transcript_update",
+      "form_update",
+      "call_updated",
+      "call_ended",
+      "final_transcript",
+      "speak_action",
+      "system_state"
+    ],
     sessionId,
-    eventTypes: ["transcript_update", "form_update", "call_updated", "call_ended"],
+    enabled: enabled && !!sessionId,
   });
 }
 
-/**
- * Hook for complaint updates
- */
 export function useComplaintUpdates() {
-  return useWebSocket({
-    endpoint: "/api/calls/live",
+  return useGlobalWebSocket({
     eventTypes: ["complaint_created", "complaint_updated"],
   });
 }
 
-/**
- * Hook for system alerts
- */
 export function useSystemAlerts() {
-  return useWebSocket({
-    endpoint: "/api/calls/live",
+  return useGlobalWebSocket({
     eventTypes: ["system_alert", "escalation"],
   });
 }

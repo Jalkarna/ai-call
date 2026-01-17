@@ -1,0 +1,64 @@
+# VMC Voice AI Backend - Dependencies
+# FastAPI and Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+websockets>=11.0
+
+# Database
+sqlalchemy>=2.0.25
+asyncpg>=0.29.0
+alembic>=1.13.1
+
+# Redis
+redis>=5.0.1
+
+# HTTP Client
+httpx>=0.26.0
+aiohttp>=3.9.1
+
+# Validation
+pydantic>=2.5.3
+pydantic-settings>=2.1.0
+email-validator>=2.1.0
+
+# Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+cryptography>=42.0.0
+
+# AWS (S3 for audio storage)
+boto3>=1.34.14
+
+# Twilio
+twilio>=8.11.0
+
+# Google AI (Gemini) - Using official SDK
+google-genai>=0.3.0
+
+# Sarvam AI - Official Python SDK
+sarvamai>=0.1.0
+
+# Audio Processing
+pydub>=0.25.1
+
+# Date/Time
+python-dateutil>=2.8.2
+
+# Monitoring & Logging
+structlog>=24.1.0
+
+# Testing
+pytest>=7.4.4
+pytest-asyncio>=0.23.3
+pytest-cov>=4.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+tenacity>=8.2.3
+
+# Voice Activity Detection (VAD)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchaudio>=2.0.0
+silero-vad>=6.0.0

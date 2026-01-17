@@ -22,7 +22,20 @@ import {
   type ComplaintResponse,
   type AnalyticsResponse,
 } from "./api-client";
-import { MOCK_CALLS, MOCK_COMPLAINTS, type Log, type Complaint } from "./mock-data";
+import { MOCK_CALLS, MOCK_COMPLAINTS } from "./mock-data";
+
+// Local Log type definition matching frontend expectations
+export interface Log {
+  id: string;
+  callerId: string;
+  timestamp: string;
+  duration: string;
+  language: string;
+  intent: string;
+  status: string;
+  location: string;
+  sentiment: "Positive" | "Neutral" | "Negative" | "Frustrated";
+}
 
 // ============================================================================
 // Types
@@ -68,7 +81,7 @@ export function useBackendStatus() {
       // Start a new check
       setIsChecking(true);
       statusCheckPromise = isBackendAvailable();
-      
+
       try {
         const available = await statusCheckPromise;
         backendStatusCache = available;
@@ -105,19 +118,26 @@ function transformCallResponse(call: CallLogResponse): Log {
   const seconds = duration % 60;
 
   // Safely transform sentiment
-  const sentimentValue = call.sentiment 
+  const sentimentValue = call.sentiment
     ? (call.sentiment.charAt(0).toUpperCase() + call.sentiment.slice(1)) as Log["sentiment"]
     : "Neutral";
+
+  // Map backend status to frontend status
+  const statusMap: Record<string, string> = {
+    "active": "Active",
+    "completed": "Completed", 
+    "dropped": "Dropped",
+    "escalated": "Action Required"
+  };
 
   return {
     id: call.id,
     callerId: call.caller,
     timestamp: call.called_at,
     duration: `${minutes}m ${seconds}s`,
-    language: call.language || "Hindi",
+    language: call.language_display || call.language || "Hindi",
     intent: call.intent || "General Inquiry",
-    status: call.status === "dropped" ? "Dropped" : 
-            call.status === "escalated" ? "Action Required" : "Completed",
+    status: statusMap[call.status] || call.status_display || "Completed",
     location: call.location || "Unknown",
     sentiment: sentimentValue,
   };
@@ -141,13 +161,12 @@ export function useCalls(filters: CallFilters = {}) {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      // Try backend first
       const backendAvailable = await isBackendAvailable();
-      
+
       if (backendAvailable) {
         const response = await fetchCalls(filters);
         const transformedCalls = response.items.map(transformCallResponse);
-        
+
         setState({
           data: transformedCalls,
           isLoading: false,
@@ -158,39 +177,35 @@ export function useCalls(filters: CallFilters = {}) {
           pageSize: response.page_size,
         });
       } else {
-        // Use mock data
+        // Mock fallback
         let mockData = [...MOCK_CALLS];
-        
-        // Apply filters to mock data
-        if (filters.language && filters.language !== "all") {
-          mockData = mockData.filter((c) => c.language === filters.language);
-        }
+
+        // Simple client-side filtering
         if (filters.status && filters.status !== "all") {
-          mockData = mockData.filter((c) => c.status === filters.status);
+          // MOCK_CALLS status is capitalized "Completed", filters.status might be lowercase from API client types
+          // frontend page sends "All", "Completed" etc.
+          // actually filters in useCalls are Backend types?
+          // filters defined in api-client.ts:
+          // export interface CallFilters { page?: number; pageSize?: number; status?: string; ... }
+          // The page passes "Completed", "Dropped" etc.
+          mockData = mockData.filter(c => c.status === filters.status);
         }
-        if (filters.sentiment && filters.sentiment !== "all") {
-          mockData = mockData.filter((c) => c.sentiment === filters.sentiment);
+        if (filters.language && filters.language !== "All") {
+          mockData = mockData.filter(c => c.language === filters.language);
         }
         if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          mockData = mockData.filter(
-            (c) =>
-              c.callerId.toLowerCase().includes(searchLower) ||
-              c.location.toLowerCase().includes(searchLower) ||
-              c.intent.toLowerCase().includes(searchLower)
-          );
+          const s = filters.search.toLowerCase();
+          mockData = mockData.filter(c => c.callerId.includes(s) || c.intent.toLowerCase().includes(s));
         }
 
-        // Pagination
         const page = filters.page || 1;
         const pageSize = filters.pageSize || 10;
         const start = (page - 1) * pageSize;
-        const paginatedData = mockData.slice(start, start + pageSize);
 
         setState({
-          data: paginatedData,
+          data: mockData.slice(start, start + pageSize),
           isLoading: false,
-          error: null,
+          error: null, // No error on fallback
           isFromBackend: false,
           total: mockData.length,
           page,
@@ -198,16 +213,17 @@ export function useCalls(filters: CallFilters = {}) {
         });
       }
     } catch (error) {
-      // Fallback to mock data on error
-      const mockData = MOCK_CALLS.slice(0, filters.pageSize || 10);
+      // Fallback on error
+      const page = filters.page || 1;
+      const pageSize = filters.pageSize || 10;
       setState({
-        data: mockData,
+        data: MOCK_CALLS.slice(0, pageSize),
         isLoading: false,
-        error: error as Error,
+        error: error as Error, // keep error but show data
         isFromBackend: false,
         total: MOCK_CALLS.length,
-        page: 1,
-        pageSize: filters.pageSize || 10,
+        page,
+        pageSize
       });
     }
   }, [filters.page, filters.pageSize, filters.language, filters.status, filters.sentiment, filters.search]);
@@ -219,8 +235,99 @@ export function useCalls(filters: CallFilters = {}) {
   return { ...state, refetch: fetchData };
 }
 
+import { CallDetail, TranscriptEntry, Complaint } from "./types";
+
 /**
- * Hook to fetch a single call by ID
+ * Transform backend call response to frontend CallDetail type
+ */
+function transformCallDetailResponse(call: CallLogResponse): CallDetail {
+  const baseLog = transformCallResponse(call);
+
+  // Transform transcripts - handle both old and new API format
+  const transcripts: TranscriptEntry[] = (call.transcripts || call.transcript || []).map((t: any) => ({
+    timestamp: t.timestamp || new Date().toISOString(),
+    speaker: t.speaker || (t.role === 'user' ? 'Caller' : 'AI Agent'), // Use speaker field or map role
+    role: t.role || (t.speaker?.toLowerCase().includes('ai') ? 'assistant' : 'user'), // Add role field
+    text: t.text || "",
+    isFinal: t.is_final ?? t.isFinal ?? true,
+    confidence: t.confidence
+  }));
+
+  return {
+    ...baseLog,
+    // Fix mismatch between Log (callerId) and CallDetail (caller)
+    caller: call.caller,
+    status: call.status as any, // Use backend status
+    sessionId: call.session_id,
+    calledAt: call.called_at, // Aligned by api-client
+    transcript: transcripts,
+    extractedFields: call.extractedFields || call.current_form || {}, // Try extractedFields first
+    confidenceScores: call.confidenceScores || call.confidence_scores || {},
+    linkedComplaintId: call.complaints?.[0]?.ticket_id,
+    sentiment: (call.sentiment ? call.sentiment.toLowerCase() : undefined) as any,
+    durationSeconds: call.duration_seconds,
+    recordingUrl: call.recording_url
+  };
+}
+
+/**
+ * Hook to fetch a single call by ID with full details
+ */
+export function useCallDetail(callId: string | null) {
+  const [state, setState] = useState<DataState<CallDetail>>({
+    data: null,
+    isLoading: true,
+    error: null,
+    isFromBackend: false,
+  });
+
+  useEffect(() => {
+    if (!callId) {
+      setState({ data: null, isLoading: false, error: null, isFromBackend: false });
+      return;
+    }
+
+    const fetchData = async () => {
+      setState((prev) => ({ ...prev, isLoading: true }));
+
+      try {
+        const backendAvailable = await isBackendAvailable();
+
+        if (backendAvailable) {
+          const response = await fetchCallById(callId);
+          setState({
+            data: transformCallDetailResponse(response),
+            isLoading: false,
+            error: null,
+            isFromBackend: true,
+          });
+        } else {
+          // No mock fallback for detailed view as requested
+          setState({
+            data: null,
+            isLoading: false,
+            error: new Error("Backend unavailable"),
+            isFromBackend: false,
+          });
+        }
+      } catch (error) {
+        setState({
+          data: null,
+          isLoading: false,
+          error: error as Error,
+          isFromBackend: false,
+        });
+      }
+    };
+
+    fetchData();
+  }, [callId]);
+
+  return state;
+}
+
+/**
+ * Hook to fetch a single call by ID (Summary)
  */
 export function useCall(callId: string | null) {
   const [state, setState] = useState<DataState<Log>>({
@@ -229,6 +336,7 @@ export function useCall(callId: string | null) {
     error: null,
     isFromBackend: false,
   });
+  // ... remainder of useCall ...
 
   useEffect(() => {
     if (!callId) {
@@ -251,23 +359,10 @@ export function useCall(callId: string | null) {
             isFromBackend: true,
           });
         } else {
-          // Find in mock data
-          const mockCall = MOCK_CALLS.find((c) => c.id === callId);
-          setState({
-            data: mockCall || null,
-            isLoading: false,
-            error: mockCall ? null : new Error("Call not found"),
-            isFromBackend: false,
-          });
+          setState(prev => ({ ...prev, isLoading: false, error: new Error("Backend unavailable"), data: null }));
         }
       } catch (error) {
-        const mockCall = MOCK_CALLS.find((c) => c.id === callId);
-        setState({
-          data: mockCall || null,
-          isLoading: false,
-          error: error as Error,
-          isFromBackend: false,
-        });
+        setState(prev => ({ ...prev, isLoading: false, error: error as Error, data: null }));
       }
     };
 
@@ -293,7 +388,8 @@ function transformComplaintResponse(complaint: ComplaintResponse): Complaint {
     location: complaint.location,
     status: complaint.status as Complaint["status"],
     urgency: complaint.urgency as Complaint["urgency"],
-    timestamp: complaint.created_at,
+    createdAt: complaint.created_at,
+    updatedAt: complaint.updated_at || complaint.created_at, // Ensure updatedAt is present
     assignedTo: complaint.assigned_to,
   };
 }
@@ -332,56 +428,28 @@ export function useComplaints(filters: ComplaintFilters = {}) {
           pageSize: response.page_size,
         });
       } else {
-        // Use mock data
-        let mockData = [...MOCK_COMPLAINTS];
-
-        // Apply filters
-        if (filters.status && filters.status !== "all") {
-          mockData = mockData.filter((c) => c.status === filters.status);
-        }
-        if (filters.urgency && filters.urgency !== "all") {
-          mockData = mockData.filter((c) => c.urgency === filters.urgency);
-        }
-        if (filters.category && filters.category !== "all") {
-          mockData = mockData.filter((c) => c.category === filters.category);
-        }
-        if (filters.search) {
-          const searchLower = filters.search.toLowerCase();
-          mockData = mockData.filter(
-            (c) =>
-              c.ticketNumber.toLowerCase().includes(searchLower) ||
-              c.location.toLowerCase().includes(searchLower) ||
-              c.category.toLowerCase().includes(searchLower) ||
-              c.description.toLowerCase().includes(searchLower)
-          );
-        }
-
-        // Pagination
+        // Mock Fallback
         const page = filters.page || 1;
         const pageSize = filters.pageSize || 10;
-        const start = (page - 1) * pageSize;
-        const paginatedData = mockData.slice(start, start + pageSize);
-
         setState({
-          data: paginatedData,
+          data: MOCK_COMPLAINTS.slice(0, pageSize),
           isLoading: false,
           error: null,
           isFromBackend: false,
-          total: mockData.length,
+          total: MOCK_COMPLAINTS.length,
           page,
-          pageSize,
+          pageSize
         });
       }
     } catch (error) {
-      const mockData = MOCK_COMPLAINTS.slice(0, filters.pageSize || 10);
       setState({
-        data: mockData,
+        data: MOCK_COMPLAINTS.slice(0, 10),
         isLoading: false,
         error: error as Error,
         isFromBackend: false,
         total: MOCK_COMPLAINTS.length,
         page: 1,
-        pageSize: filters.pageSize || 10,
+        pageSize: 10
       });
     }
   }, [filters.page, filters.pageSize, filters.status, filters.urgency, filters.category, filters.search]);
@@ -425,22 +493,10 @@ export function useComplaint(complaintId: string | null) {
             isFromBackend: true,
           });
         } else {
-          const mockComplaint = MOCK_COMPLAINTS.find((c) => c.id === complaintId);
-          setState({
-            data: mockComplaint || null,
-            isLoading: false,
-            error: mockComplaint ? null : new Error("Complaint not found"),
-            isFromBackend: false,
-          });
+          setState(prev => ({ ...prev, isLoading: false, error: new Error("Backend unavailable"), data: null }));
         }
       } catch (error) {
-        const mockComplaint = MOCK_COMPLAINTS.find((c) => c.id === complaintId);
-        setState({
-          data: mockComplaint || null,
-          isLoading: false,
-          error: error as Error,
-          isFromBackend: false,
-        });
+        setState(prev => ({ ...prev, isLoading: false, error: error as Error, data: null }));
       }
     };
 
@@ -507,7 +563,6 @@ function generateMockAnalytics(): AnalyticsData {
     }),
   };
 }
-
 /**
  * Hook to fetch analytics data
  */
@@ -527,7 +582,7 @@ export function useAnalytics(filters: AnalyticsFilters = {}) {
 
       if (backendAvailable) {
         const response = await fetchAnalytics(filters);
-        
+
         const analyticsData: AnalyticsData = {
           totalCalls: response.total_calls,
           totalComplaints: response.total_complaints,
@@ -618,40 +673,35 @@ export function useDashboardStats() {
 
         if (backendAvailable) {
           const analytics = await fetchAnalytics({ period: "24h" });
-          
+
           setState({
             data: {
               totalCalls: analytics.total_calls,
               totalComplaints: analytics.total_complaints,
               avgHandleTime: `${Math.floor(analytics.avg_handle_time_seconds / 60)}m ${analytics.avg_handle_time_seconds % 60}s`,
-              urgentActions: 3, // Would come from real API
-              activeCalls: 2,
-              completedToday: Math.floor(analytics.total_calls * 0.9),
-              droppedToday: Math.floor(analytics.total_calls * 0.1),
-              openComplaints: analytics.complaints_by_status?.Open || 5,
+              urgentActions: 0, // Placeholder
+              activeCalls: 0, // Placeholder, updated by websocket
+              completedToday: Math.floor(analytics.total_calls * 0.9), // logical guess or fetch real stats
+              droppedToday: 0,
+              openComplaints: analytics.complaints_by_status?.Open || 0,
             },
             isLoading: false,
             error: null,
             isFromBackend: true,
           });
         } else {
-          // Generate from mock data
-          const todayCalls = MOCK_CALLS.slice(0, 10);
-          const completed = todayCalls.filter((c) => c.status === "Completed").length;
-          const dropped = todayCalls.filter((c) => c.status === "Dropped").length;
-          const openComplaints = MOCK_COMPLAINTS.filter((c) => c.status === "Open").length;
-          const urgentComplaints = MOCK_COMPLAINTS.filter((c) => c.urgency === "Critical" || c.urgency === "High").length;
-
+          // Mock Dashboard Stats
+          const mockData = generateMockAnalytics();
           setState({
             data: {
-              totalCalls: MOCK_CALLS.length,
-              totalComplaints: MOCK_COMPLAINTS.length,
+              totalCalls: mockData.totalCalls,
+              totalComplaints: mockData.totalComplaints,
               avgHandleTime: "3m 5s",
-              urgentActions: urgentComplaints,
-              activeCalls: 2,
-              completedToday: completed,
-              droppedToday: dropped,
-              openComplaints,
+              urgentActions: 2,
+              activeCalls: 1,
+              completedToday: 15,
+              droppedToday: 1,
+              openComplaints: 3
             },
             isLoading: false,
             error: null,
@@ -659,17 +709,17 @@ export function useDashboardStats() {
           });
         }
       } catch (error) {
-        // Fallback
+        const mockData = generateMockAnalytics();
         setState({
           data: {
-            totalCalls: MOCK_CALLS.length,
-            totalComplaints: MOCK_COMPLAINTS.length,
+            totalCalls: mockData.totalCalls,
+            totalComplaints: mockData.totalComplaints,
             avgHandleTime: "3m 5s",
-            urgentActions: 3,
-            activeCalls: 2,
-            completedToday: 18,
-            droppedToday: 2,
-            openComplaints: 5,
+            urgentActions: 2,
+            activeCalls: 1,
+            completedToday: 15,
+            droppedToday: 1,
+            openComplaints: 3
           },
           isLoading: false,
           error: error as Error,
@@ -679,7 +729,7 @@ export function useDashboardStats() {
     };
 
     fetchData();
-    
+
     // Refresh every minute
     const interval = setInterval(fetchData, 60000);
     return () => clearInterval(interval);

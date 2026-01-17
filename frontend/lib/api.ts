@@ -20,6 +20,8 @@ import type {
   ApiError,
 } from "./types";
 
+import type { CallLogResponse } from "./api-client";
+
 // Base API URL - configure via environment variable
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -48,7 +50,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
-    
+
     const headers: HeadersInit = {
       "Content-Type": "application/json",
       ...options.headers,
@@ -128,8 +130,16 @@ export const callsApi = {
     skip?: number;
     limit?: number;
     status?: string;
-  }): Promise<CallLog[]> => {
-    return api.get<CallLog[]>("/api/calls", params);
+    language?: string;
+    search?: string;
+  }): Promise<{ items: CallLogResponse[]; total: number; page: number; page_size: number }> => {
+    // Map skip to offset
+    const queryParams: any = { ...params };
+    if (params?.skip !== undefined) {
+      queryParams.offset = params.skip;
+      delete queryParams.skip;
+    }
+    return api.get<{ items: CallLogResponse[]; total: number; page: number; page_size: number }>("/api/calls/history", queryParams);
   },
 
   /**
@@ -171,7 +181,19 @@ export const complaintsApi = {
     location?: string;
     search?: string;
   }): Promise<PaginatedResponse<Complaint>> => {
-    return api.get<PaginatedResponse<Complaint>>("/api/complaints", params);
+    const queryParams: any = { ...params };
+
+    // Convert page/pageSize to skip/limit
+    const limit = params?.pageSize || 50;
+    const page = params?.page || 1;
+    const skip = (page - 1) * limit;
+
+    queryParams.limit = limit;
+    queryParams.skip = skip;
+    delete queryParams.page;
+    delete queryParams.pageSize;
+
+    return api.get<PaginatedResponse<Complaint>>("/api/complaints", queryParams);
   },
 
   /**
@@ -251,7 +273,7 @@ export const adminApi = {
    * Get dashboard statistics
    */
   getDashboardStats: async (): Promise<DashboardStats> => {
-    return api.get<DashboardStats>("/api/admin/stats/dashboard");
+    return api.get<DashboardStats>("/api/admin/stats");
   },
 
   /**

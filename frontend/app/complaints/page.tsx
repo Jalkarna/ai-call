@@ -4,31 +4,31 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import Link from "next/link";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  MoreHorizontal, 
-  Filter, 
-  Download, 
+import {
+  MoreHorizontal,
+  Filter,
+  Download,
   Search,
   RefreshCw,
   Eye,
@@ -45,7 +45,7 @@ import {
   AlertTriangle,
   Construction
 } from "lucide-react";
-import { MOCK_COMPLAINTS } from "@/lib/mock-data";
+
 import { useComplaints, useBackendStatus } from "@/lib/hooks";
 import {
   Pagination,
@@ -92,12 +92,12 @@ export default function ComplaintsPage() {
 
   // Use hooks for data fetching with automatic fallback
   const { isAvailable: backendAvailable } = useBackendStatus();
-  const { 
-    data: complaintsData, 
-    isLoading, 
-    isFromBackend, 
-    total, 
-    refetch 
+  const {
+    data: complaintsData,
+    isLoading,
+    isFromBackend,
+    total,
+    refetch
   } = useComplaints({
     page: currentPage,
     pageSize: itemsPerPage,
@@ -107,48 +107,31 @@ export default function ComplaintsPage() {
     search: searchFilter || undefined,
   });
 
-  // Use data from hook or fallback to mock
-  const allComplaints = complaintsData || MOCK_COMPLAINTS;
+  // Use data from hook
+  const allComplaints = complaintsData || [];
 
-  // Client-side filtering when using mock data
+  // Client-side filtering (only if needed/fallback)
   const allFilteredComplaints = useMemo(() => {
     let filtered = allComplaints;
-    
-    if (!isFromBackend) {
-      filtered = filtered.filter((complaint) => {
-        const matchesSearch = 
-          complaint.ticketNumber.toLowerCase().includes(searchFilter.toLowerCase()) ||
-          complaint.category.toLowerCase().includes(searchFilter.toLowerCase()) ||
-          complaint.location.toLowerCase().includes(searchFilter.toLowerCase()) ||
-          complaint.description.toLowerCase().includes(searchFilter.toLowerCase());
-        
-        const matchesCategory = categoryFilter === "All" || complaint.category === categoryFilter;
-        const matchesStatus = statusFilter === "All" || complaint.status === statusFilter;
-        const matchesUrgency = urgencyFilter === "All" || complaint.urgency === urgencyFilter;
-        
-        return matchesSearch && matchesCategory && matchesStatus && matchesUrgency;
-      });
-    }
-    
+
     // Tab filters (apply to all data)
     return filtered.filter((complaint) => {
-      const matchesTab = 
+      const matchesTab =
         activeTab === "all" ||
         (activeTab === "open" && complaint.status === "Open") ||
         (activeTab === "in-progress" && complaint.status === "In Progress") ||
         (activeTab === "resolved" && complaint.status === "Resolved") ||
         (activeTab === "urgent" && (complaint.urgency === "High" || complaint.urgency === "Critical"));
-      
+
       return matchesTab;
     });
-  }, [allComplaints, searchFilter, categoryFilter, statusFilter, urgencyFilter, activeTab, isFromBackend]);
+  }, [allComplaints, activeTab]);
 
-  const totalItems = isFromBackend ? total : allFilteredComplaints.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalItems = total;
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const slicedComplaints = isFromBackend 
-    ? allFilteredComplaints 
-    : allFilteredComplaints.slice(startIndex, startIndex + itemsPerPage);
+  // If backend pagination is used, slicedComplaints is just allFilteredComplaints (current page)
+  const slicedComplaints = allFilteredComplaints;
 
   const resetFilters = () => {
     setSearchFilter("");
@@ -160,22 +143,23 @@ export default function ComplaintsPage() {
 
   const activeFiltersCount = [categoryFilter, statusFilter, urgencyFilter].filter(f => f !== "All").length;
 
-  // Calculate stats from available data
+  // Calculate stats from available data (Note: This is only for the current page if using pagination)
+  // Ideally fetch aggregated stats from analytics API
   const stats = useMemo(() => ({
-    total: isFromBackend ? total : MOCK_COMPLAINTS.length,
+    total: total,
     open: allComplaints.filter(c => c.status === "Open").length,
     inProgress: allComplaints.filter(c => c.status === "In Progress").length,
     resolved: allComplaints.filter(c => c.status === "Resolved").length,
     urgent: allComplaints.filter(c => c.urgency === "High" || c.urgency === "Critical").length,
-  }), [allComplaints, total, isFromBackend]);
+  }), [allComplaints, total]);
 
   // Category breakdown
-  const categoryStats = useMemo(() => 
+  const categoryStats = useMemo(() =>
     CATEGORIES.filter(c => c !== "All").map(category => ({
       name: category,
       count: allComplaints.filter(c => c.category === category).length,
     })).sort((a, b) => b.count - a.count),
-  [allComplaints]);
+    [allComplaints]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -249,14 +233,14 @@ export default function ComplaintsPage() {
         <div className="flex flex-1 items-center gap-2 flex-wrap">
           <div className="relative flex-1 max-w-sm min-w-[200px]">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search ticket, location, description..." 
+            <Input
+              placeholder="Search ticket, location, description..."
               value={searchFilter}
               onChange={(e) => { setSearchFilter(e.target.value); setCurrentPage(1); }}
               className="pl-8"
             />
           </div>
-          
+
           <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Category" />
@@ -267,7 +251,7 @@ export default function ComplaintsPage() {
               ))}
             </SelectContent>
           </Select>
-          
+
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="Status" />
@@ -278,7 +262,7 @@ export default function ComplaintsPage() {
               ))}
             </SelectContent>
           </Select>
-          
+
           <Select value={urgencyFilter} onValueChange={(v) => { setUrgencyFilter(v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Urgency" />
@@ -312,7 +296,7 @@ export default function ComplaintsPage() {
               ))}
             </SelectContent>
           </Select>
-          
+
           <Button variant="outline" size="sm" className="gap-1">
             <Download className="h-4 w-4" />
             Export
@@ -324,7 +308,7 @@ export default function ComplaintsPage() {
       <div className="text-sm text-muted-foreground">
         Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, allFilteredComplaints.length)} of {allFilteredComplaints.length} complaints
       </div>
-      
+
       {/* Table */}
       <div className="rounded-md border">
         <Table>
@@ -365,9 +349,9 @@ export default function ComplaintsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={
-                      complaint.status === "Resolved" ? "default" : 
-                      complaint.status === "In Progress" ? "secondary" : 
-                      complaint.status === "Closed" ? "outline" : "secondary"
+                      complaint.status === "Resolved" ? "default" :
+                        complaint.status === "In Progress" ? "secondary" :
+                          complaint.status === "Closed" ? "outline" : "secondary"
                     }>
                       {complaint.status === "Open" && <AlertCircle className="h-3 w-3 mr-1" />}
                       {complaint.status === "In Progress" && <Clock className="h-3 w-3 mr-1" />}
@@ -377,9 +361,9 @@ export default function ComplaintsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={
-                      complaint.urgency === "Critical" ? "destructive" : 
-                      complaint.urgency === "High" ? "destructive" :
-                      complaint.urgency === "Medium" ? "secondary" : "outline"
+                      complaint.urgency === "Critical" ? "destructive" :
+                        complaint.urgency === "High" ? "destructive" :
+                          complaint.urgency === "Medium" ? "secondary" : "outline"
                     }>
                       {complaint.urgency}
                     </Badge>
@@ -396,8 +380,8 @@ export default function ComplaintsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
-                    <span className="text-sm">{format(new Date(complaint.timestamp), "MMM d, yyyy")}</span>
-                    <p className="text-xs text-muted-foreground">{format(new Date(complaint.timestamp), "h:mm a")}</p>
+                    <span className="text-sm">{format(new Date(complaint.createdAt), "MMM d, yyyy")}</span>
+                    <p className="text-xs text-muted-foreground">{format(new Date(complaint.createdAt), "h:mm a")}</p>
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
@@ -441,8 +425,8 @@ export default function ComplaintsPage() {
         <Pagination>
           <PaginationContent>
             <PaginationItem>
-              <PaginationPrevious 
-                href="#" 
+              <PaginationPrevious
+                href="#"
                 onClick={(e) => {
                   e.preventDefault();
                   if (currentPage > 1) setCurrentPage(currentPage - 1);
@@ -454,8 +438,8 @@ export default function ComplaintsPage() {
               const page = i + 1;
               return (
                 <PaginationItem key={page}>
-                  <PaginationLink 
-                    href="#" 
+                  <PaginationLink
+                    href="#"
                     isActive={currentPage === page}
                     onClick={(e) => {
                       e.preventDefault();
@@ -468,8 +452,8 @@ export default function ComplaintsPage() {
               );
             })}
             <PaginationItem>
-              <PaginationNext 
-                href="#" 
+              <PaginationNext
+                href="#"
                 onClick={(e) => {
                   e.preventDefault();
                   if (currentPage < totalPages) setCurrentPage(currentPage + 1);

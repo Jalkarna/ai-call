@@ -1,122 +1,102 @@
+import { Log } from "./hooks";
+import { Complaint, ComplaintStatus, UrgencyLevel } from "./types";
 
-import { addMinutes, subDays, subMinutes } from "date-fns";
-
-export type ComplaintStatus = "Open" | "In Progress" | "Resolved";
-export type UrgencyLevel = "Low" | "Medium" | "High" | "Critical";
-
-export interface Log {
-  id: string;
-  callerId: string;
-  timestamp: string;
-  duration: string;
-  language: string;
-  intent: string;
-  status: "Completed" | "Dropped" | "Action Required";
-  location: string;
-  sentiment: "Positive" | "Neutral" | "Negative" | "Frustrated";
-}
-
-export interface Complaint {
-  id: string;
-  ticketNumber: string;
-  category: string;
-  description: string;
-  location: string;
-  status: ComplaintStatus;
-  urgency: UrgencyLevel;
-  timestamp: string;
-  assignedTo?: string;
-}
-
-const LOCATIONS = [
-  "Alkapuri, Vadodara",
-  "Manjalpur, Vadodara",
-  "Karelibaug, Vadodara",
-  "Fatehgunj, Vadodara",
-  "Gotri, Vadodara",
-  "Sayajigunj, Vadodara",
-  "Akota, Vadodara",
-  "Waghodia Road, Vadodara",
+export const MOCK_CALLS: Log[] = [
+    {
+        id: "call-001",
+        callerId: "+91 98765 43210",
+        timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+        duration: "2m 30s",
+        language: "Hindi",
+        intent: "Complaint Registration",
+        status: "Completed",
+        location: "Alkapuri",
+        sentiment: "Neutral"
+    },
+    {
+        id: "call-002",
+        callerId: "+91 98765 43211",
+        timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+        duration: "1m 45s",
+        language: "Gujarati",
+        intent: "Status Check",
+        status: "Completed",
+        location: "Manjalpur",
+        sentiment: "Positive"
+    },
+    {
+        id: "call-003",
+        callerId: "+91 98765 43212",
+        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+        duration: "0m 45s",
+        language: "Hindi",
+        intent: "General Inquiry",
+        status: "Dropped",
+        location: "Karelibaug",
+        sentiment: "Negative"
+    },
+    {
+        id: "call-004",
+        callerId: "+91 98765 43213",
+        timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+        duration: "3m 15s",
+        language: "English",
+        intent: "Complaint Registration",
+        status: "Action Required",
+        location: "Fatehgunj",
+        sentiment: "Frustrated"
+    },
+    {
+        id: "call-005",
+        callerId: "+91 98765 43214",
+        timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+        duration: "1m 15s",
+        language: "Hindi",
+        intent: "Status Check",
+        status: "Completed",
+        location: "Sayajigunj",
+        sentiment: "Neutral"
+    }
 ];
 
-const CATEGORIES = [
-  "Garbage Collection",
-  "Streetlight Issue",
-  "Water Supply",
-  "Drainage/Sewage",
-  "Road Repair",
-  "Stray Animal",
-  "Illegal Encroachment",
+export const MOCK_COMPLAINTS: Complaint[] = [
+    {
+        id: "comp-001",
+        ticketNumber: "VMC-2024-001",
+        category: "Garbage Collection",
+        description: "Garbage not collected from Society main gate for 3 days.",
+        location: "Alkapuri, Vadodara",
+        status: "Open" as ComplaintStatus,
+        urgency: "High" as UrgencyLevel,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+        updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+        assignedTo: "Rajesh Kumar",
+        confidenceScores: { category: 0.95, location: 0.88 },
+    },
+    {
+        id: "comp-002",
+        ticketNumber: "VMC-2024-002",
+        category: "Streetlight Issue",
+        description: "Street light flickering near community hall.",
+        location: "Manjalpur, Vadodara",
+        status: "In Progress" as ComplaintStatus,
+        urgency: "Medium" as UrgencyLevel,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+        updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 12).toISOString(),
+        assignedTo: "Suresh Patel",
+        confidenceScores: { category: 0.92, location: 0.95 },
+    },
+    {
+        id: "comp-003",
+        ticketNumber: "VMC-2024-003",
+        category: "Water Supply",
+        description: "Low water pressure in the area.",
+        location: "Karelibaug, Vadodara",
+        status: "Resolved" as ComplaintStatus,
+        urgency: "High" as UrgencyLevel,
+        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
+        updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+        assignedTo: "Mahesh Shah",
+        confidenceScores: { category: 0.89, location: 0.91 },
+    },
 ];
-
-const INTENTS = [
-  "Report Complaint",
-  "Check Complaint Status",
-  "General Inquiry",
-  "Emergency Assistance",
-];
-
-const ID_PREFIX = "VMC";
-
-// Seeded random number generator for consistent server/client rendering
-class SeededRandom {
-  private seed: number;
-
-  constructor(seed: number) {
-    this.seed = seed;
-  }
-
-  next(): number {
-    this.seed = (this.seed * 9301 + 49297) % 233280;
-    return this.seed / 233280;
-  }
-}
-
-const generateRandomId = (rng: SeededRandom) => {
-  return Math.floor(rng.next() * 1000000000).toString(36);
-};
-
-export const generateMockCalls = (count: number): Log[] => {
-  const rng = new SeededRandom(12345); // Fixed seed for consistent results
-  
-  return Array.from({ length: count }).map((_, i) => {
-    const isRecent = i < 5;
-    const date = subMinutes(new Date(), i * (isRecent ? 2 : 15));
-    
-    return {
-      id: generateRandomId(rng),
-      callerId: `+91 ${Math.floor(rng.next() * 90000 + 10000)} ${Math.floor(rng.next() * 90000 + 10000)}`,
-      timestamp: date.toISOString(),
-      duration: `${Math.floor(rng.next() * 5) + 1}m ${Math.floor(rng.next() * 59)}s`,
-      language: ["Hindi", "Gujarati", "English"][Math.floor(rng.next() * 3)],
-      intent: INTENTS[Math.floor(rng.next() * INTENTS.length)],
-      status: (rng.next() > 0.1 ? "Completed" : "Dropped") as Log["status"],
-      location: LOCATIONS[Math.floor(rng.next() * LOCATIONS.length)],
-      sentiment: ["Positive", "Neutral", "Negative", "Frustrated"][Math.floor(rng.next() * 4)] as Log["sentiment"],
-    };
-  });
-};
-
-export const generateMockComplaints = (count: number): Complaint[] => {
-  const rng = new SeededRandom(54321); // Fixed seed for consistent results
-  
-  return Array.from({ length: count }).map((_, i) => {
-    const date = subDays(new Date(), Math.floor(rng.next() * 7));
-    const urgency = ["Low", "Medium", "High", "Critical"][Math.floor(rng.next() * 4)] as UrgencyLevel;
-    
-    return {
-      id: generateRandomId(rng),
-      ticketNumber: `${ID_PREFIX}-${2024000 + i}`,
-      category: CATEGORIES[Math.floor(rng.next() * CATEGORIES.length)],
-      description: "Resident reported issue via AI voice assistant. Details automatically extracted.",
-      location: LOCATIONS[Math.floor(rng.next() * LOCATIONS.length)],
-      status: ["Open", "In Progress", "Resolved"][Math.floor(rng.next() * 3)] as ComplaintStatus,
-      urgency,
-      timestamp: date.toISOString(),
-      assignedTo: rng.next() > 0.5 ? "Zone Officer A" : undefined,
-    };
-  });
-};
-
-export const MOCK_CALLS = generateMockCalls(20);
-export const MOCK_COMPLAINTS = generateMockComplaints(15);

@@ -4,20 +4,20 @@
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import Link from "next/link";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MOCK_CALLS } from "@/lib/mock-data";
+
 import { useCalls, useBackendStatus } from "@/lib/hooks";
 import {
   Pagination,
@@ -43,12 +43,12 @@ import {
   DropdownMenuTrigger,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { 
-  Search, 
-  Filter, 
-  Download, 
-  Phone, 
-  PhoneOff, 
+import {
+  Search,
+  Filter,
+  Download,
+  Phone,
+  PhoneOff,
   PhoneIncoming,
   MoreHorizontal,
   Eye,
@@ -71,12 +71,12 @@ export default function CallsPage() {
 
   // Use hooks for data fetching with automatic fallback
   const { isAvailable: backendAvailable } = useBackendStatus();
-  const { 
-    data: callsData, 
-    isLoading, 
-    isFromBackend, 
-    total, 
-    refetch 
+  const {
+    data: callsData,
+    isLoading,
+    isFromBackend,
+    total,
+    refetch
   } = useCalls({
     page: currentPage,
     pageSize: itemsPerPage,
@@ -86,31 +86,20 @@ export default function CallsPage() {
     search: searchFilter || undefined,
   });
 
-  // Use data from hook or fallback to mock
-  const allCalls = callsData || MOCK_CALLS;
+  // Use data from hook
+  const allCalls = callsData || [];
 
-  // Client-side filtering when using mock data (hook already filters for backend)
+  // Client-side filtering not needed if backend filtering works, but kept for safety if hook returns all
   const filteredCalls = useMemo(() => {
-    if (isFromBackend) return allCalls; // Backend already filtered
-    
-    return allCalls.filter((call) => {
-      const matchesSearch = 
-        call.callerId.includes(searchFilter) ||
-        call.intent.toLowerCase().includes(searchFilter.toLowerCase()) ||
-        call.id.toLowerCase().includes(searchFilter.toLowerCase());
-      
-      const matchesLanguage = languageFilter === "All" || call.language === languageFilter;
-      const matchesStatus = statusFilter === "All" || call.status === statusFilter;
-      const matchesSentiment = sentimentFilter === "All" || call.sentiment === sentimentFilter;
-      
-      return matchesSearch && matchesLanguage && matchesStatus && matchesSentiment;
-    });
-  }, [allCalls, searchFilter, languageFilter, statusFilter, sentimentFilter, isFromBackend]);
+    if (isFromBackend) return allCalls;
+    return allCalls;
+  }, [allCalls, isFromBackend]);
 
-  const totalItems = isFromBackend ? total : filteredCalls.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const totalItems = total;
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const slicedCalls = isFromBackend ? filteredCalls : filteredCalls.slice(startIndex, startIndex + itemsPerPage);
+  // If backend pagination is used, slicedCalls is just allCalls (which contains the current page)
+  const slicedCalls = allCalls;
 
   const resetFilters = () => {
     setSearchFilter("");
@@ -122,13 +111,13 @@ export default function CallsPage() {
 
   const activeFiltersCount = [languageFilter, statusFilter, sentimentFilter].filter(f => f !== "All").length;
 
-  // Calculate stats from available data
+  // Calculate stats from available data or backend total
   const stats = useMemo(() => ({
-    total: isFromBackend ? total : MOCK_CALLS.length,
-    completed: allCalls.filter(c => c.status === "Completed").length,
-    dropped: allCalls.filter(c => c.status === "Dropped").length,
-    avgDuration: "3:24",
-  }), [allCalls, total, isFromBackend]);
+    total: total,
+    completed: 0, // Backend aggregate needed
+    dropped: 0, // Backend aggregate needed
+    avgDuration: "3:24", // Placeholder or fetch
+  }), [total]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -171,14 +160,14 @@ export default function CallsPage() {
         <div className="flex flex-1 items-center gap-2">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by caller ID, intent..." 
+            <Input
+              placeholder="Search by caller ID, intent..."
               value={searchFilter}
               onChange={(e) => { setSearchFilter(e.target.value); setCurrentPage(1); }}
               className="pl-8"
             />
           </div>
-          
+
           <Select value={languageFilter} onValueChange={(v) => { setLanguageFilter(v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="Language" />
@@ -189,7 +178,7 @@ export default function CallsPage() {
               ))}
             </SelectContent>
           </Select>
-          
+
           <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="Status" />
@@ -200,7 +189,7 @@ export default function CallsPage() {
               ))}
             </SelectContent>
           </Select>
-          
+
           <Select value={sentimentFilter} onValueChange={(v) => { setSentimentFilter(v); setCurrentPage(1); }}>
             <SelectTrigger className="w-[130px]">
               <SelectValue placeholder="Sentiment" />
@@ -234,7 +223,7 @@ export default function CallsPage() {
               ))}
             </SelectContent>
           </Select>
-          
+
           <Button variant="outline" size="sm" className="gap-1">
             <Download className="h-4 w-4" />
             Export
@@ -274,17 +263,25 @@ export default function CallsPage() {
                 <TableRow key={call.id}>
                   <TableCell className="font-medium">
                     <Link href={`/calls/${call.id}`} className="hover:underline text-primary">
-                      {format(new Date(call.timestamp), "HH:mm:ss")}
+                      {new Date(call.timestamp).toLocaleTimeString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        timeZone: 'Asia/Kolkata'
+                      })}
                     </Link>
                     <p className="text-xs text-muted-foreground">
-                      {format(new Date(call.timestamp), "MMM d")}
+                      {new Date(call.timestamp).toLocaleDateString('en-IN', {
+                        month: 'short',
+                        day: 'numeric',
+                        timeZone: 'Asia/Kolkata'
+                      })}
                     </p>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <div className={`p-1 rounded-full ${
-                        call.status === "Dropped" ? "bg-red-100 dark:bg-red-900" : "bg-green-100 dark:bg-green-900"
-                      }`}>
+                      <div className={`p-1 rounded-full ${call.status === "Dropped" ? "bg-red-100 dark:bg-red-900" : "bg-green-100 dark:bg-green-900"
+                        }`}>
                         {call.status === "Dropped" ? (
                           <PhoneOff className="h-3 w-3 text-red-600 dark:text-red-400" />
                         ) : (
@@ -308,9 +305,9 @@ export default function CallsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={
-                      call.sentiment === "Negative" || call.sentiment === "Frustrated" 
-                        ? "destructive" 
-                        : call.sentiment === "Positive" 
+                      call.sentiment === "Negative" || call.sentiment === "Frustrated"
+                        ? "destructive"
+                        : call.sentiment === "Positive"
                           ? "default"
                           : "secondary"
                     }>
@@ -359,8 +356,8 @@ export default function CallsPage() {
         <Pagination>
           <PaginationContent>
             <PaginationItem>
-              <PaginationPrevious 
-                href="#" 
+              <PaginationPrevious
+                href="#"
                 onClick={(e) => {
                   e.preventDefault();
                   if (currentPage > 1) setCurrentPage(currentPage - 1);
@@ -372,8 +369,8 @@ export default function CallsPage() {
               const page = i + 1;
               return (
                 <PaginationItem key={page}>
-                  <PaginationLink 
-                    href="#" 
+                  <PaginationLink
+                    href="#"
                     isActive={currentPage === page}
                     onClick={(e) => {
                       e.preventDefault();
@@ -386,8 +383,8 @@ export default function CallsPage() {
               );
             })}
             <PaginationItem>
-              <PaginationNext 
-                href="#" 
+              <PaginationNext
+                href="#"
                 onClick={(e) => {
                   e.preventDefault();
                   if (currentPage < totalPages) setCurrentPage(currentPage + 1);

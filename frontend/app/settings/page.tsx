@@ -14,13 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ModeToggle } from "@/components/mode-toggle";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Slider } from "@/components/ui/slider";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from "@/components/ui/table";
 import {
   Dialog,
@@ -49,18 +49,14 @@ import {
   Zap
 } from "lucide-react";
 
-// Mock users data
-const MOCK_USERS = [
+// Local placeholder data
+const USERS = [
   { id: "1", name: "Admin User", email: "admin@vmc.gov.in", role: "Super Admin", status: "Active", lastLogin: "2024-01-15 10:30" },
   { id: "2", name: "Operator 1", email: "operator1@vmc.gov.in", role: "Operator", status: "Active", lastLogin: "2024-01-15 09:45" },
-  { id: "3", name: "Supervisor", email: "supervisor@vmc.gov.in", role: "Supervisor", status: "Active", lastLogin: "2024-01-14 18:20" },
-  { id: "4", name: "Operator 2", email: "operator2@vmc.gov.in", role: "Operator", status: "Inactive", lastLogin: "2024-01-10 11:00" },
 ];
 
-// Mock API keys
-const MOCK_API_KEYS = [
+const API_KEYS = [
   { id: "1", name: "Production Key", key: "vmc_prod_xxxx...xxxx", created: "2024-01-01", lastUsed: "2024-01-15", status: "Active" },
-  { id: "2", name: "Development Key", key: "vmc_dev_xxxx...xxxx", created: "2024-01-05", lastUsed: "2024-01-14", status: "Active" },
 ];
 
 export default function SettingsPage() {
@@ -92,7 +88,7 @@ export default function SettingsPage() {
             API Keys
           </TabsTrigger>
         </TabsList>
-        
+
         {/* General Settings */}
         <TabsContent value="general" className="space-y-4">
           <Card>
@@ -120,7 +116,7 @@ export default function SettingsPage() {
                     Language used for AI responses when caller preference is unknown.
                   </p>
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label htmlFor="timezone">Timezone</Label>
                   <Select defaultValue="ist">
@@ -142,7 +138,7 @@ export default function SettingsPage() {
                   <Label htmlFor="org-name">Organization Name</Label>
                   <Input id="org-name" defaultValue="Vadodara Municipal Corporation" />
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label htmlFor="helpline">Helpline Number</Label>
                   <Input id="helpline" defaultValue="1800-XXX-XXXX" />
@@ -151,8 +147,8 @@ export default function SettingsPage() {
 
               <div className="grid gap-2">
                 <Label htmlFor="greeting">Custom Greeting Message</Label>
-                <Textarea 
-                  id="greeting" 
+                <Textarea
+                  id="greeting"
                   defaultValue="नमस्ते। वडोदरा नगर निगम में आपका स्वागत है। मैं आपकी कैसे सहायता कर सकती हूं?"
                   rows={3}
                 />
@@ -186,9 +182,9 @@ export default function SettingsPage() {
                 </Label>
                 <ModeToggle />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <Label className="flex flex-col gap-1">
                   <span>Compact Mode</span>
@@ -226,7 +222,7 @@ export default function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div className="grid gap-2">
                   <Label>STT Engine</Label>
                   <Select defaultValue="whisper">
@@ -367,9 +363,9 @@ export default function SettingsPage() {
                 </Label>
                 <Switch defaultChecked />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <Label className="flex flex-col gap-1">
                   <span>Escalation Alerts</span>
@@ -379,9 +375,9 @@ export default function SettingsPage() {
                 </Label>
                 <Switch defaultChecked />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <Label className="flex flex-col gap-1">
                   <span>Low Confidence Alerts</span>
@@ -391,9 +387,9 @@ export default function SettingsPage() {
                 </Label>
                 <Switch defaultChecked />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <Label className="flex flex-col gap-1">
                   <span>Daily Digest</span>
@@ -403,9 +399,9 @@ export default function SettingsPage() {
                 </Label>
                 <Switch />
               </div>
-              
+
               <Separator />
-              
+
               <div className="flex items-center justify-between">
                 <Label className="flex flex-col gap-1">
                   <span>Weekly Reports</span>
@@ -510,7 +506,7 @@ export default function SettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {MOCK_USERS.map((user) => (
+                  {USERS.map((user) => (
                     <TableRow key={user.id}>
                       <TableCell>
                         <div className="flex items-center gap-3">
@@ -608,7 +604,7 @@ export default function SettingsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {MOCK_API_KEYS.map((apiKey) => (
+                  {API_KEYS.map((apiKey) => (
                     <TableRow key={apiKey.id}>
                       <TableCell className="font-medium">{apiKey.name}</TableCell>
                       <TableCell>
@@ -616,9 +612,9 @@ export default function SettingsPage() {
                           <code className="text-sm bg-muted px-2 py-1 rounded">
                             {showApiKey === apiKey.id ? "vmc_prod_a1b2c3d4e5f6g7h8" : apiKey.key}
                           </code>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             className="h-6 w-6"
                             onClick={() => setShowApiKey(showApiKey === apiKey.id ? null : apiKey.id)}
                           >
@@ -660,7 +656,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground">
-                API keys provide full access to your Vadodara Municipal Corporation Complaint Center system. Keep them secure and never share them publicly. 
+                API keys provide full access to your Vadodara Municipal Corporation Complaint Center system. Keep them secure and never share them publicly.
                 If you suspect a key has been compromised, regenerate it immediately. All API access is logged for security auditing.
               </p>
             </CardContent>
