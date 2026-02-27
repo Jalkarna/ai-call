@@ -1078,62 +1078,6 @@ Rules:
 
 ## ⚙️ Configuration
 
-### Backend Environment Variables
-
-```bash
-# Application
-APP_NAME=VMC Voice AI
-APP_ENV=development
-DEBUG=true
-SECRET_KEY=your-secret-key-change-in-production
-
-# Server
-HOST=0.0.0.0
-PORT=8000
-WORKERS=4
-
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/vmc_voice_ai
-DATABASE_POOL_SIZE=20
-
-# Redis
-REDIS_URL=redis://localhost:6379/0
-REDIS_SESSION_DB=1
-
-# Twilio
-TWILIO_ACCOUNT_SID=AC497f3df54557a95caa5368c0408bedb9
-TWILIO_AUTH_TOKEN=11f44ff78dd07bf509c45efc7ecb21e5
-TWILIO_PHONE_NUMBER=+17756180700
-TWILIO_WEBHOOK_URL=https://your-domain.com/api/calls/start
-TWILIO_STREAM_URL=wss://your-domain.com/api/calls/stream
-
-# Google Gemini AI
-GEMINI_API_KEY=GEMINI_KEY_REDACTED
-GEMINI_MODEL=gemini-2.0-flash-exp
-
-# Sarvam AI
-SARVAM_API_KEY=sk_ol93ahss_i3GNLL7DhVMFfLC9lLK1IZkj
-SARVAM_STT_MODEL=saarika:v2.5
-SARVAM_TTS_MODEL=bulbul:v2
-SARVAM_TTS_SPEAKER=meera
-
-# AWS S3
-AWS_ACCESS_KEY_ID=your-aws-access-key
-AWS_SECRET_ACCESS_KEY=your-aws-secret-key
-AWS_REGION=ap-south-1
-AWS_S3_BUCKET=vmc-voice-ai-audio
-
-# Security
-JWT_SECRET_KEY=your-jwt-secret-key
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
-
-# Feature Flags
-ENABLE_CONSENT_ANNOUNCEMENT=true
-ENABLE_CALL_RECORDING=true
-DATA_RETENTION_DAYS=90
-LOG_LEVEL=INFO
-```
-
 ### Frontend Environment Variables
 
 ```bash
