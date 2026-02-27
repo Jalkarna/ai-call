@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/table";
 import {
   DropdownMenu,
-  DropdownMenuContent,
+  DropdownMenuContent, //Mera lund lele jalkarna.
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -376,7 +376,7 @@ export default function ComplaintsPage() {
                   </TableCell>
                   <TableCell className="hidden lg:table-cell">
                     <span className="text-sm text-muted-foreground">
-                      {complaint.assignedTo || "Unassigned"}
+                      {(complaint as any).assigned_to_name || complaint.assignedTo || "Unassigned"}
                     </span>
                   </TableCell>
                   <TableCell className="hidden md:table-cell">

@@ -247,7 +247,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                 <Label className="text-muted-foreground">Assigned To</Label>
                 <div className="flex items-center gap-2">
                   <User className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{complaint.assignedTo || "Unassigned"}</span>
+                  <span className="font-medium">{(complaint as any).assigned_to_name || complaint.assignedTo || "Unassigned"}</span>
                 </div>
               </div>
               <div className="space-y-2">
@@ -288,7 +288,7 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
                     icon={<User className="h-3 w-3" />}
                     title="Assigned to Officer"
                     timestamp={format(new Date(), "MMM d, h:mm a")}
-                    description={`Assigned to ${complaint.assignedTo}`}
+                    description={`Assigned to ${(complaint as any).assigned_to_name || complaint.assignedTo}`}
                   />
                 )}
                 {complaint.status === "In Progress" && (
@@ -319,12 +319,16 @@ export default function ComplaintDetailPage({ params }: { params: Promise<{ id: 
               <CardTitle>Source</CardTitle>
             </CardHeader>
             <CardContent>
-              <Button variant="outline" className="w-full" asChild>
-                <Link href={`/calls/${complaint.id}`} prefetch={false}>
-                  <Phone className="h-4 w-4 mr-2" />
-                  View Original Call
-                </Link>
-              </Button>
+              {(complaint as any).session_id ? (
+                <Button variant="outline" className="w-full" asChild>
+                  <Link href={`/calls/${(complaint as any).session_id}`} prefetch={false}>
+                    <Phone className="h-4 w-4 mr-2" />
+                    View Original Call
+                  </Link>
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">No associated call recording</p>
+              )}
             </CardContent>
           </Card>
         </div>

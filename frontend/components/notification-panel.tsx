@@ -221,6 +221,42 @@ function eventToNotification(event: WebSocketEvent): Notification | null {
         data: escData,
       };
     
+    case "call_ended":
+      const endData = event.data as any;
+      return {
+        id,
+        type: "success",
+        title: "Call Completed",
+        message: `Call ${endData.session_id} ended successfully. Duration: ${Math.floor((endData.duration_seconds || 0) / 60)}m ${(endData.duration_seconds || 0) % 60}s`,
+        timestamp: event.timestamp,
+        read: false,
+        data: endData,
+      };
+    
+    case "call_started":
+      const startData = event.data as any;
+      return {
+        id,
+        type: "system",
+        title: "New Incoming Call",
+        message: `Incoming call from ${startData.caller || startData.callerId}`,
+        timestamp: event.timestamp,
+        read: false,
+        data: startData,
+      };
+    
+    case "case_created":
+      const caseData = event.data as any;
+      return {
+        id,
+        type: "complaint",
+        title: "Complaint Registered",
+        message: `Ticket ${caseData.ticket_id} has been created successfully.`,
+        timestamp: event.timestamp,
+        read: false,
+        data: caseData,
+      };
+    
     case "system_alert":
       return {
         id,
@@ -235,3 +271,4 @@ function eventToNotification(event: WebSocketEvent): Notification | null {
       return null;
   }
 }
+

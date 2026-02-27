@@ -25,7 +25,7 @@ class SileroVADBuffer:
     def __init__(
         self,
         min_audio_ms: int = 600,
-        max_audio_ms: int = 10000,
+        max_audio_ms: int = 15000,
         silence_threshold_ms: int = 1200,
         sample_rate: int = 8000,
         vad_threshold: float = 0.6,       # Increased from 0.5 for fewer false positives

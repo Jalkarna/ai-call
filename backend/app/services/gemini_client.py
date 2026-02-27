@@ -108,10 +108,18 @@ class ConversationHistory:
     turns: List[Dict[str, str]] = field(default_factory=list)
     current_form: Dict[str, Any] = field(default_factory=dict)
     language: str = "hi"
+    db_sequence: int = 0  # Separate counter for DB sequence numbers
     
-    def add_turn(self, role: str, content: str):
-        """Add a conversation turn."""
-        self.turns.append({"role": role, "text": content})
+    def add_turn(self, role: str, content: str) -> int:
+        """Add a conversation turn and return the sequence number."""
+        seq = self.db_sequence
+        self.turns.append({"role": role, "text": content, "seq": seq})
+        self.db_sequence += 1
+        return seq
+    
+    def get_next_sequence(self) -> int:
+        """Get the next sequence number without incrementing."""
+        return self.db_sequence
     
     def update_form(self, fields: Dict[str, Any]):
         """Update the current form with new fields."""
@@ -149,32 +157,6 @@ class GeminiClient:
         
         # Load system prompt
         self.system_prompt = self._load_system_prompt()
-        
-        # Define function declarations for Gemini function calling
-        self.end_call_function = {
-            "name": "end_call",
-            "description": """STRICT RULES - Only call end_call when ALL conditions are met:
-            1. Complaint has been FILED (you said 'शिकायत दर्ज हो गई' or equivalent)
-            2. You ALREADY ASKED 'क्या कुछ और मदद चाहिए?' in a PREVIOUS turn  
-            3. User replied 'नहीं', 'no', 'बस', 'nothing else' to your 'more help?' question
-            
-            NEVER call end_call:
-            - Immediately after user confirms ('हाँ', 'कर दो') - you must ASK 'और मदद?' first
-            - In the same turn as filing complaint
-            - Before asking if they need more help
-            
-            The flow is: confirm -> file -> ask 'और मदद?' -> wait for user 'no' -> THEN end_call""",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "Why call is ending - must include that user said 'no more help'"
-                    }
-                },
-                "required": ["reason"]
-            }
-        }
         
         logger.info("gemini_client_initialized", model=self.model_name)
     
@@ -217,104 +199,95 @@ IMPORTANT: You are FEMALE - use appropriate pronouns."""
             # Build the request - DON'T add user turn yet, it will be added after successful processing
             contents = self._build_contents(history, transcript)
             
-            # Create tools with function declarations
-            tools = types.Tool(function_declarations=[self.end_call_function])
+            # Build language-specific system prompt
+            from app.utils.language import get_gemini_language_instruction
+            lang_instruction = get_gemini_language_instruction(language)
+            enhanced_prompt = f"{self.system_prompt}\n\n{lang_instruction}"
             
-            # Configure with structured output using Pydantic AND function calling
+            # Configure with structured output using Pydantic (NO function calling - it conflicts with JSON output)
             config = types.GenerateContentConfig(
-                system_instruction=self.system_prompt,
+                system_instruction=enhanced_prompt,  # Use enhanced prompt with language instruction
                 response_mime_type="application/json",
                 response_json_schema=GeminiStructuredResponse.model_json_schema(),
-                tools=[tools],  # Add function calling tools
                 temperature=1.0,  # Default for Gemini 3
                 thinking_config=types.ThinkingConfig(
-                    thinking_level="low"  # Low reasoning for Gemini 3 Flash (minimizes latency)
+                    thinking_level="minimal"  # Flash-only: matches "no thinking" for most queries
                 )
             )
             
-            # Call Gemini API
-            print(f"📤 Calling Gemini API: model={self.model_name} turns={len(contents)} thinking=low function_calling=enabled")
-            logger.info("📤 Calling Gemini API", 
-                       session_id=history.session_id, 
-                       model=self.model_name,
-                       conversation_turns=len(contents),
-                       thinking_level="low",
-                       function_calling="enabled")
+            # Call Gemini API with retry logic (handle 503 overload errors)
+            import time
+            max_retries = 3
+            retry_delay = 1  # Start with 1 second
             
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model=self.model_name,
-                contents=contents,
-                config=config
-            )
+            for attempt in range(max_retries):
+                try:
+                    api_start = time.time()
+                    print(f"📤 Calling Gemini API (attempt {attempt + 1}/{max_retries}): model={self.model_name} turns={len(contents)}")
+                    logger.info("📤 Calling Gemini API", 
+                               session_id=history.session_id, 
+                               model=self.model_name,
+                               conversation_turns=len(contents),
+                               attempt=attempt + 1,
+                               max_retries=max_retries)
+                    
+                    response = await asyncio.to_thread(
+                        self.client.models.generate_content,
+                        model=self.model_name,
+                        contents=contents,
+                        config=config
+                    )
+                    
+                    api_time_ms = int((time.time() - api_start) * 1000)
+                    print(f"⏱️ Gemini API success in {api_time_ms}ms")
+                    logger.info("gemini_api_success", session_id=history.session_id, api_time_ms=api_time_ms, attempt=attempt + 1)
+                    break  # Success, exit retry loop
+                    
+                except Exception as api_err:
+                    api_time_ms = int((time.time() - api_start) * 1000)
+                    error_msg = str(api_err)
+                    
+                    # Check if it's a 503 overload error
+                    is_overload = "503" in error_msg or "overloaded" in error_msg.lower()
+                    
+                    if is_overload and attempt < max_retries - 1:
+                        # Retry with exponential backoff
+                        logger.warning("gemini_api_overload_retrying", 
+                                      session_id=history.session_id, 
+                                      error=error_msg,
+                                      attempt=attempt + 1,
+                                      retry_in_seconds=retry_delay)
+                        print(f"⚠️ Gemini API overloaded, retrying in {retry_delay}s...")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        # Final attempt failed or non-retryable error
+                        logger.error("gemini_api_error", 
+                                    error=error_msg, 
+                                    api_time_ms=api_time_ms, 
+                                    session_id=history.session_id,
+                                    attempt=attempt + 1)
+                        raise
             
-            # Check for function call first
-            function_called = False
-            if response.candidates and len(response.candidates) > 0:
-                candidate = response.candidates[0]
-                if candidate.content and candidate.content.parts:
-                    for part in candidate.content.parts:
-                        if hasattr(part, 'function_call') and part.function_call:
-                            function_call = part.function_call
-                            if function_call.name == "end_call":
-                                print(f"📞 Gemini called end_call function: reason={function_call.args.get('reason', 'not specified')}")
-                                logger.info("gemini_function_call_end_call",
-                                           session_id=history.session_id,
-                                           reason=function_call.args.get('reason', 'not specified'))
-                                function_called = True
-                                
-                                # Try to get the farewell message from the JSON part of the response
-                                farewell_text = None
-                                try:
-                                    # Look for JSON text in the response
-                                    for part in candidate.content.parts:
-                                        if hasattr(part, 'text') and part.text:
-                                            import json
-                                            try:
-                                                json_data = json.loads(part.text)
-                                                farewell_text = json_data.get('speak', '')
-                                            except json.JSONDecodeError:
-                                                pass
-                                except Exception:
-                                    pass
-                                
-                                # Fallback farewell if not found
-                                if not farewell_text:
-                                    farewell_text = {
-                                        "hi": "VMC में call करने के लिए धन्यवाद। आपका दिन शुभ हो!",
-                                        "gu": "VMC માં કૉલ કરવા બદલ આભાર. તમારો દિવસ શુભ રહે!",
-                                        "en": "Thank you for calling VMC. Have a great day!"
-                                    }.get(language, "VMC में call करने के लिए धन्यवाद। आपका दिन शुभ हो!")
-                                
-                                gemini_response = GeminiResponse(
-                                    intent=Intent.COMPLAINT,
-                                    next_action=NextAction.END,
-                                    speak=farewell_text,
-                                    fields=history.current_form,
-                                    missing_fields=[]
-                                )
-                                
-                                # Add to history
-                                history.add_turn("user", transcript)
-                                history.add_turn("assistant", gemini_response.speak)
-                                
-                                return gemini_response
-            
-            # Parse regular JSON response if no function call
-            if not function_called:
+            # Parse JSON response
+            try:
                 response_text = response.text
-                print(f"📥 Gemini API response: {response_text[:300]}")
-                logger.info("📥 Gemini API response received", 
-                           session_id=history.session_id,
-                           response_length=len(response_text),
-                           raw_response=response_text[:500] if len(response_text) > 500 else response_text)
-                
-                # Parse and validate response
-                gemini_response = self._parse_response(response_text, history)
-                
-                # NOW add turns to history after successful processing
-                history.add_turn("user", transcript)
-                history.add_turn("assistant", gemini_response.speak)
+            except Exception as text_err:
+                logger.error("gemini_response_text_error", error=str(text_err))
+                return self._create_fallback_response(language)
+            
+            print(f"📥 Gemini API response: {response_text[:300]}")
+            logger.info("📥 Gemini API response received", 
+                       session_id=history.session_id,
+                       response_length=len(response_text),
+                       raw_response=response_text[:500] if len(response_text) > 500 else response_text)
+            
+            # Parse and validate response
+            gemini_response = self._parse_response(response_text, history)
+            
+            # NOW add turns to history after successful processing
+            history.add_turn("user", transcript)
+            history.add_turn("assistant", gemini_response.speak)
             
             # Update current form with extracted fields
             if gemini_response.fields:

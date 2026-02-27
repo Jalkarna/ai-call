@@ -244,7 +244,9 @@ export interface ComplaintResponse {
   created_at: string;
   updated_at: string;
   assigned_to?: string;
+  assigned_to_name?: string;
   source_call_id?: string;
+  session_id?: string;
   confidence_scores?: Record<string, number>;
 }
 
@@ -285,6 +287,7 @@ export interface ComplaintUpdateRequest {
  * Fetch paginated complaints
  */
 export async function fetchComplaints(filters: ComplaintFilters = {}): Promise<ComplaintListResponse> {
+  // ... (params logic stays same) ...
   const params = new URLSearchParams();
   const limit = filters.pageSize || 10;
   const page = filters.page || 1;
@@ -315,6 +318,8 @@ export async function fetchComplaints(filters: ComplaintFilters = {}): Promise<C
         created_at: c.created_at,
         updated_at: c.updated_at,
         assigned_to: c.assigned_to,
+        assigned_to_name: c.assigned_to_name,
+        source_call_id: c.source_call_id,
       })),
       total: rawComplaints.length, // TODO: Backend should return total count for pagination
       page: page,
@@ -345,6 +350,9 @@ export async function fetchComplaintById(complaintId: string): Promise<Complaint
     created_at: raw.created_at,
     updated_at: raw.updated_at,
     assigned_to: raw.assigned_to,
+    assigned_to_name: raw.assigned_to_name,
+    source_call_id: raw.source_call_id,
+    session_id: raw.session_id,
   };
 }
 

@@ -391,6 +391,9 @@ function transformComplaintResponse(complaint: ComplaintResponse): Complaint {
     createdAt: complaint.created_at,
     updatedAt: complaint.updated_at || complaint.created_at, // Ensure updatedAt is present
     assignedTo: complaint.assigned_to,
+    assigned_to_name: complaint.assigned_to_name,
+    sourceCallId: complaint.source_call_id,
+    session_id: complaint.session_id,
   };
 }
 
@@ -678,7 +681,7 @@ export function useDashboardStats() {
             data: {
               totalCalls: analytics.total_calls,
               totalComplaints: analytics.total_complaints,
-              avgHandleTime: `${Math.floor(analytics.avg_handle_time_seconds / 60)}m ${analytics.avg_handle_time_seconds % 60}s`,
+              avgHandleTime: `${Math.floor(analytics.avg_handle_time_seconds / 60)}m ${Math.floor(analytics.avg_handle_time_seconds % 60)}s`,
               urgentActions: 0, // Placeholder
               activeCalls: 0, // Placeholder, updated by websocket
               completedToday: Math.floor(analytics.total_calls * 0.9), // logical guess or fetch real stats

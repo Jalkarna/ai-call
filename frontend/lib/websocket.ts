@@ -311,6 +311,6 @@ export function useComplaintUpdates() {
 
 export function useSystemAlerts() {
   return useGlobalWebSocket({
-    eventTypes: ["system_alert", "escalation"],
+    eventTypes: ["system_alert", "escalation", "call_started", "call_ended", "case_created"],
   });
 }

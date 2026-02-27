@@ -2,7 +2,7 @@
 Calls API - Handles incoming Twilio calls and WebSocket audio streaming
 """
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Request, Form, Response, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Request, Form, Response, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
@@ -33,7 +33,7 @@ COMPLAINT_TYPE_TO_INTENT = {
     "water_supply": "Water Supply",
     "drainage": "Drainage Issue",
     "stray_animal": "Stray Animal",
-    "encroachment": "Encroachment",
+    "encroachment": "Encroachment", 
     "other": "Other Issue"
 }
 
@@ -107,30 +107,40 @@ session_id=session_id,
 
 
 @router.websocket("/stream/{session_id}")
-async def stream_audio(websocket: WebSocket, session_id: str):
+async def stream_audio(
+    websocket: WebSocket, 
+    session_id: str,
+    lang: str = Query("hi", description="Language code from IVR: gu/hi/en")
+):
     """
     WebSocket endpoint for Twilio media stream.
     
     Implements turn-based conversation with interrupt capability:
     - Buffers audio until silence detected (VAD)
-    - Processes speech through STT -> Gemini -> TTS
+    - Processes speech through STT -> Gemini -> TTS  
     - Sends clear message if user interrupts while AI is speaking
+    
+    Args:
+        session_id: Unique call session identifier
+        lang: Language selected from IVR (gu=Gujarati, hi=Hindi, en=English)
     """
-    print(f"DEBUG: WebSocket request received for session {session_id}")
+    logger.info("websocket_request", session_id=session_id, language=lang)
+    print(f"DEBUG: WebSocket request received for session {session_id} with language {lang}")
     await websocket.accept()
     print(f"DEBUG: WebSocket accepted for session {session_id}")
     
     # Track pending end_call to wait for TTS mark event
     pending_end_call = False
     farewell_mark_id = None
-    logger.info("websocket_connected", session_id=session_id)
+    logger.info("websocket_connected", session_id=session_id, language=lang)
     
     try:
         from app.db.database import async_session_factory
         print("DEBUG: Getting DB session...")
         async with async_session_factory() as db:
-            print("DEBUG: DB session obtained. Starting loop...")
+            print(f"DEBUG: DB session obtained. Starting loop with language={lang}...")
             stream_sid = None
+            call_initialized = False  # Track if we've created the call session
             
             while True:
                 data = await websocket.receive_text()
@@ -143,10 +153,53 @@ async def stream_audio(websocket: WebSocket, session_id: str):
                 
                 elif event == "start":
                     stream_sid = message.get("start", {}).get("streamSid")
-                    print(f"DEBUG: Event: start, streamSid={stream_sid}")
-                    logger.info("twilio_stream_started", session_id=session_id, stream_sid=stream_sid)
+                    call_params = message.get("start", {})
+                    custom_params = call_params.get("customParameters", {})
+                    caller_number = custom_params.get("caller", "Unknown")
                     
-                    # Send initial greeting immediately to reduce perceived delay
+                    # Extract language from custom parameters (more reliable than query param)
+                    # Use 'lang' from query as fallback, but prefer 'language' from <Parameter>
+                    language_param = custom_params.get("language")
+                    if language_param:
+                        lang = language_param
+                        logger.info("using_language_from_params", language=lang)
+                    
+                    print(f"DEBUG: Event: start, streamSid={stream_sid}, caller={caller_number}, language={lang}")
+                    logger.info("twilio_stream_started", session_id=session_id, stream_sid=stream_sid, language=lang)
+                    
+                    # Create call session with language if not already created
+                    if not call_initialized:
+                        # Check if session already exists (may have been created by /api/calls/start)
+                        existing_session = orchestrator.active_sessions.get(session_id)
+                        
+                        if existing_session:
+                            logger.info("call_session_already_exists", session_id=session_id)
+                            call_initialized = True
+                            
+                            # Update language in existing session's history
+                            history = orchestrator.conversation_history.get(session_id)
+                            if history and history.language != lang:
+                                logger.info("updating_session_language", 
+                                          session_id=session_id, 
+                                          old_lang=history.language, 
+                                          new_lang=lang)
+                                history.language = lang
+                        else:
+                            # Create new session
+                            try:
+                                await orchestrator.start_call(
+                                    session_id=session_id,
+                                    caller_number=caller_number,
+                                    twilio_call_sid=call_params.get("callSid", session_id),
+                                    db=db,
+                                    language=lang  # Pass language here!
+                                )
+                                call_initialized = True
+                                logger.info("call_session_created", session_id=session_id, language=lang)
+                            except Exception as e:
+                                logger.error("call_session_creation_error", error=str(e), session_id=session_id)
+                    
+                    # Send initial greeting in selected language
                     greeting_audio = await orchestrator.generate_initial_greeting(session_id, db)
                     if greeting_audio and stream_sid:
                         print(f"DEBUG: Sending initial greeting, size={len(greeting_audio)} bytes")
@@ -472,10 +525,10 @@ async def get_call_status(
             if history:
                 for turn in history.turns:
                     transcripts.append({
-                        "role": turn.role,
-                        "text": turn.parts[0] if turn.parts else "",
+                        "role": turn["role"],
+                        "text": turn.get("text", ""),
                         "timestamp": datetime.utcnow().isoformat(),  # Approximate
-                        "speaker": turn.role,
+                        "speaker": "Caller" if turn["role"] == "user" else "AI Agent",
                         "isFinal": True,
                         "confidence": 0.9
                     })
@@ -663,6 +716,7 @@ async def simulate_call(
 ):
     """
     Test endpoint to simulate an incoming call for development.
+    Auto-ends after 5 seconds.
     """
     try:
         import uuid
@@ -709,12 +763,18 @@ async def simulate_call(
             "language": "hi"
         }, db)
         
+        # Auto-end test call after 2 more seconds
+        await asyncio.sleep(2)
+        await orchestrator.end_call(session_id, db)
+        logger.info("test_call_auto_ended", session_id=session_id)
+        
         return {
             "status": "simulated",
             "session_id": session_id,
-            "message": "Test call simulation started"
+            "message": "Test call simulation completed and auto-ended after 5 seconds"
         }
         
     except Exception as e:
         logger.error("simulate_call_error", error=str(e))
         return {"status": "error", "message": str(e)}
+

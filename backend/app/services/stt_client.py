@@ -40,8 +40,8 @@ class AudioBuffer:
     def __init__(
         self, 
         min_audio_ms: int = 600,       # Minimum audio before processing (600ms)
-        max_audio_ms: int = 10000,     # Maximum audio to buffer (10 seconds)
-        silence_threshold_ms: int = 1200,  # Silence duration to trigger end of speech (1.2s)
+        max_audio_ms: int = 15000,     # Maximum audio to buffer (15 seconds)
+        silence_threshold_ms: int = 1000,  # Silence duration to trigger end of speech (1.0s)
         sample_rate: int = 8000
     ):
         self.min_audio_ms = min_audio_ms

@@ -18,6 +18,46 @@ logger = structlog.get_logger()
 
 router = APIRouter()
 
+# Mock employee mapping (UUID -> Name)
+EMPLOYEE_NAMES = {
+    "e1a2b3c4-5d6e-7f8a-9012-1a2b3c4d5e6f": "Rajesh Kumar",
+    "f2b3c4d5-6e7f-8901-2345-2b3c4d5e6f7a": "Priya Shah",
+    "a3c4d5e6-7f89-0123-4567-3c4d5e6f7a8b": "Amit Patel",
+    "b4d5e6f7-8901-2345-6789-4d5e6f7a8b9c": "Neha Desai",
+    "c5e6f7a8-9012-3456-789a-5e6f7a8b9c0d": "Vikram Singh",
+}
+
+
+def complaint_to_response(complaint) -> dict:
+    """Convert SQLAlchemy Complaint object to response dictionary."""
+    # Debug logging
+    logger.info("complaint_to_response", complaint_id=str(complaint.id), call_id=str(complaint.call_id) if complaint.call_id else None)
+    
+    # Get employee name from UUID
+    assigned_to_name = None
+    if complaint.assigned_to:
+        assigned_to_name = EMPLOYEE_NAMES.get(str(complaint.assigned_to), f"Employee {str(complaint.assigned_to)[:8]}")
+    
+    return {
+        "id": str(complaint.id),
+        "ticket_id": complaint.ticket_id,
+        "complaint_type": complaint.complaint_type,
+        "description": complaint.description,
+        "address": complaint.address,
+        "locality": complaint.locality,
+        "pincode": complaint.pincode,
+        "contact_number": complaint.contact_number,
+        "landmark": complaint.landmark,
+        "urgency": complaint.urgency,
+        "status": complaint.status,
+        "confidence_scores": complaint.confidence_scores or {},
+        "created_at": complaint.created_at,
+        "updated_at": complaint.updated_at,
+        "source_call_id": str(complaint.call_id) if complaint.call_id else None,
+        "assigned_to": str(complaint.assigned_to) if complaint.assigned_to else None,
+        "assigned_to_name": assigned_to_name
+    }
+
 
 # Pydantic models for API
 class ComplaintCreate(BaseModel):
@@ -52,6 +92,9 @@ class ComplaintResponse(BaseModel):
     confidence_scores: dict
     created_at: datetime
     updated_at: datetime
+    source_call_id: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_to_name: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -104,7 +147,7 @@ async def create_complaint(
         
         logger.info("complaint_created", ticket_id=ticket_id)
         
-        return complaint
+        return complaint_to_response(complaint)
         
     except Exception as e:
         logger.error("create_complaint_error", error=str(e))
@@ -157,25 +200,7 @@ async def list_complaints(
         complaints = result.scalars().all()
         
         # Convert to response format (UUID to string, handle None values)
-        return [
-            {
-                "id": str(c.id),
-                "ticket_id": c.ticket_id,
-                "complaint_type": c.complaint_type,
-                "description": c.description,
-                "address": c.address,
-                "locality": c.locality,
-                "pincode": c.pincode,
-                "contact_number": c.contact_number,
-                "landmark": c.landmark,
-                "urgency": c.urgency,
-                "status": c.status,
-                "confidence_scores": c.confidence_scores or {},
-                "created_at": c.created_at,
-                "updated_at": c.updated_at
-            }
-            for c in complaints
-        ]
+        return [complaint_to_response(c) for c in complaints]
         
     except Exception as e:
         logger.error("list_complaints_error", error=str(e))
@@ -191,8 +216,10 @@ async def get_complaint(
     Get complaint details by ID or ticket ID.
     """
     try:
-        # Try UUID first, then ticket_id
-        query = select(Complaint).where(
+        # Try UUID first, then ticket_id with join to get call session_id
+        query = select(Complaint, Call.session_id).outerjoin(
+            Call, Complaint.call_id == Call.id
+        ).where(
             or_(
                 Complaint.id == complaint_id,
                 Complaint.ticket_id == complaint_id
@@ -200,12 +227,19 @@ async def get_complaint(
         )
         
         result = await db.execute(query)
-        complaint = result.scalar_one_or_none()
+        row = result.one_or_none()
         
-        if not complaint:
+        if not row:
             raise HTTPException(status_code=404, detail="Complaint not found")
         
-        return complaint
+        complaint, session_id = row
+        
+        # Return response with session_id included
+        response = complaint_to_response(complaint)
+        if session_id:
+            response["session_id"] = session_id
+        
+        return response
         
     except HTTPException:
         raise
@@ -253,7 +287,7 @@ async def update_complaint(
         
         logger.info("complaint_updated", ticket_id=complaint.ticket_id)
         
-        return complaint
+        return complaint_to_response(complaint)
         
     except HTTPException:
         raise
@@ -296,5 +330,55 @@ async def delete_complaint(
         raise
     except Exception as e:
         logger.error("delete_complaint_error", error=str(e))
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/assign-employees")
+async def assign_employees_to_complaints(
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Admin endpoint: Assign random employees to all unassigned complaints.
+    """
+    try:
+        import random
+        import uuid as uuid_lib
+        
+        # Mock employee pool
+        MOCK_EMPLOYEES = [
+            uuid_lib.UUID("e1a2b3c4-5d6e-7f8a-9012-1a2b3c4d5e6f"),  # Rajesh Kumar
+            uuid_lib.UUID("f2b3c4d5-6e7f-8901-2345-2b3c4d5e6f7a"),  # Priya Shah
+            uuid_lib.UUID("a3c4d5e6-7f89-0123-4567-3c4d5e6f7a8b"),  # Amit Patel
+            uuid_lib.UUID("b4d5e6f7-8901-2345-6789-4d5e6f7a8b9c"),  # Neha Desai
+            uuid_lib.UUID("c5e6f7a8-9012-3456-789a-5e6f7a8b9c0d"),  # Vikram Singh
+        ]
+        
+        # Get all unassigned complaints
+        query = select(Complaint).where(Complaint.assigned_to == None)
+        result = await db.execute(query)
+        complaints = result.scalars().all()
+        
+        if not complaints:
+            return {"status": "success", "message": "No unassigned complaints found", "assigned_count": 0}
+        
+        # Assign each complaint
+        assigned_count = 0
+        for complaint in complaints:
+            complaint.assigned_to = random.choice(MOCK_EMPLOYEES)
+            assigned_count += 1
+        
+        await db.commit()
+        
+        logger.info("bulk_employee_assignment", assigned_count=assigned_count)
+        
+        return {
+            "status": "success",
+            "message": f"Assigned {assigned_count} complaints to random employees",
+            "assigned_count": assigned_count
+        }
+        
+    except Exception as e:
+        logger.error("assign_employees_error", error=str(e))
         await db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

@@ -108,32 +108,6 @@ FastAPI Orchestrator
 7. **ESCALATED** - Transferred to human
 8. **ENDED** - Call completed
 
-## Configuration
-
-### Environment Variables
-
-```bash
-# Gemini AI
-GEMINI_API_KEY=GEMINI_KEY_REDACTED
-GEMINI_MODEL=gemini-3-flash-preview
-
-# Sarvam AI (STT & TTS)
-SARVAM_API_KEY=sk_ol93ahss_i3GNLL7DhVMFfLC9lLK1IZkj
-SARVAM_STT_MODEL=saarika:v2.5
-SARVAM_TTS_MODEL=bulbul:v2
-
-# Twilio
-TWILIO_ACCOUNT_SID=AC497f3df54557a95caa5368c0408bedb9
-TWILIO_AUTH_TOKEN=11f44ff78dd07bf509c45efc7ecb21e5
-TWILIO_PHONE_NUMBER=+17756180700
-
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/vmc_voice_ai
-
-# Redis (optional for production)
-REDIS_URL=redis://localhost:6379/0
-```
-
 ## Development
 
 ### Running Tests

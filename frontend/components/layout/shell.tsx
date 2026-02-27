@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PhoneCall, ClipboardList, BarChart3, Settings, Search, Menu, LogOut, User, HelpCircle } from "lucide-react";
+import { LayoutDashboard, PhoneCall, ClipboardList, BarChart3, Settings, Search, Menu, LogOut, User, HelpCircle, Shield, Users, Headphones } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { ModeToggle } from "@/components/mode-toggle";
 import { NotificationPanel } from "@/components/notification-panel";
+import { useAuth } from "@/lib/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -112,6 +113,25 @@ export function Sidebar({ className }: { className?: string }) {
 export function Header() {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
+  const { user, logout } = useAuth();
+
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case "admin": return <Shield className="h-3 w-3" />;
+      case "supervisor": return <Users className="h-3 w-3" />;
+      case "agent": return <Headphones className="h-3 w-3" />;
+      default: return null;
+    }
+  };
+
+  const getRoleBadgeColor = (role: string) => {
+    switch (role) {
+      case "admin": return "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300";
+      case "supervisor": return "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300";
+      case "agent": return "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300";
+      default: return "bg-gray-100 text-gray-700 dark:bg-gray-900 dark:text-gray-300";
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -162,18 +182,24 @@ export function Header() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src="/avatars/01.png" alt="@vmc_admin" />
-                  <AvatarFallback>AD</AvatarFallback>
+                  <AvatarImage src={user?.avatar} alt={user?.name} />
+                  <AvatarFallback>{user?.name?.slice(0, 2).toUpperCase() || "U"}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent className="w-56" align="end" forceMount>
               <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">Admin User</p>
+                <div className="flex flex-col space-y-2">
+                  <p className="text-sm font-medium leading-none">{user?.name || "Guest"}</p>
                   <p className="text-xs leading-none text-muted-foreground">
-                    admin@vmc.gov.in
+                    {user?.email || "Not logged in"}
                   </p>
+                  {user?.role && (
+                    <Badge variant="secondary" className={`w-fit text-xs ${getRoleBadgeColor(user.role)}`}>
+                      {getRoleIcon(user.role)}
+                      <span className="ml-1 capitalize">{user.role}</span>
+                    </Badge>
+                  )}
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
@@ -194,7 +220,7 @@ export function Header() {
                 <span>Help & Support</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem className="text-red-600 cursor-pointer" onClick={logout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>
@@ -205,3 +231,4 @@ export function Header() {
     </header>
   );
 }
+

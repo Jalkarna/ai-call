@@ -76,7 +76,9 @@ export interface Complaint {
   createdAt: string;
   updatedAt: string;
   assignedTo?: string;
+  assigned_to_name?: string;  // Employee name mapped from UUID
   sourceCallId?: string;
+  session_id?: string;  // Call session identifier
   confidenceScores?: Record<string, number>;
   resolutionNotes?: string;
 }
@@ -130,7 +132,8 @@ export type WebSocketEventType =
   | "active_calls_update"
   | "final_transcript"
   | "speak_action"
-  | "system_state";
+  | "system_state"
+  | "case_created";
 
 export interface WebSocketEvent<T = unknown> {
   type: WebSocketEventType;

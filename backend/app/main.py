@@ -32,7 +32,7 @@ structlog.configure(
 logger = structlog.get_logger()
 
 # Import routers
-from app.api import calls, complaints, admin
+from app.api import calls, complaints, admin, notifications, ivr
 from app.db.database import init_db, close_db
 
 
@@ -97,6 +97,8 @@ app.add_middleware(
 app.include_router(calls.router, prefix="/api/calls", tags=["Calls"])
 app.include_router(complaints.router, prefix="/api/complaints", tags=["Complaints"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["Notifications"])
+app.include_router(ivr.router, prefix="/api/ivr", tags=["IVR"])
 
 
 @app.get("/")

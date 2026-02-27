@@ -61,7 +61,8 @@ class CallOrchestrator:
         session_id: str,
         caller_number: str,
         twilio_call_sid: str,
-        db: AsyncSession
+        db: AsyncSession,
+        language: str = "hi"
     ) -> CallSession:
         """
         Start a new call session.
@@ -71,10 +72,21 @@ class CallOrchestrator:
             caller_number: Caller's phone number
             twilio_call_sid: Twilio call SID
             db: Database session
+            language: Language code (gu/hi/en), defaults to Hindi
         
         Returns:
             New CallSession
         """
+        # Validate and normalize language code
+        from app.utils.language import validate_language_code, get_language_name
+        language = validate_language_code(language)
+        
+        logger.info("starting_call_session", 
+                   session_id=session_id, 
+                   caller=caller_number,
+                   language=language,
+                   language_name=get_language_name(language))
+        
         # Create call session
         session = CallSession(
             session_id=session_id,
@@ -82,11 +94,12 @@ class CallOrchestrator:
             state=CallState.INIT
         )
         
-        # Create conversation history
+        # Create conversation history with selected language
         history = ConversationHistory(
             session_id=session_id,
-            language="hi"  # Default to Hindi
+            language=language
         )
+        logger.info("history_created", session_id=session_id, history_language=history.language)
         
         # Initialize Silero VAD buffer (uses defaults from silero_vad.py)
         buffer = SileroVADBuffer(
@@ -338,21 +351,45 @@ class CallOrchestrator:
             µ-law audio bytes for greeting
         """
         session = self.active_sessions.get(session_id)
-        if not session:
+        history = self.conversation_history.get(session_id)
+        if not session or not history:
             return None
         
         try:
-            # Brief greeting in Hindi
-            greeting_text = "नमस्ते। मैं वडोदरा नगर निगम की सहायक हूं। आपकी क्या शिकायत है?"
+            # Get language-specific greeting
+            from app.services.tts_client import Language
+            from app.utils.language import get_sarvam_language
+            
+            # Map session language to greeting text
+            greetings = {
+                "gu": "નમસ્તે। હું વડોદરા મ્યુનિસિપલ કોર્પોરેશનની સહાયક છું। તમારી શું ફરિયાદ છે?",
+                "hi": "नमस्ते। मैं वडोदरा नगर निगम की सहायक हूं। आपकी क्या शिकायत है?",
+                "en": "Hello. I am the Vadodara Municipal Corporation assistant. What is your complaint?"
+            }
+            
+            greeting_text = greetings.get(history.language, greetings["hi"])
+            sarvam_lang = get_sarvam_language(history.language)
+            
+            # Convert to Language enum
+            lang_enum = Language.GUJARATI if history.language == "gu" else \
+                       Language.ENGLISH if history.language == "en" else \
+                       Language.HINDI
+            
+            logger.info("generating_greeting", 
+                       session_id=session_id, 
+                       language=history.language,
+                       text=greeting_text)
             
             # Generate TTS
-            from app.services.tts_client import Language
             tts_result = await self.tts.synthesize(
                 text=greeting_text,
-                language=Language.HINDI
+                language=lang_enum
             )
             
-            logger.info("initial_greeting_generated", session_id=session_id, audio_size=len(tts_result.audio_data))
+            logger.info("initial_greeting_generated", 
+                       session_id=session_id, 
+                       audio_size=len(tts_result.audio_data),
+                       language=history.language)
             
             # Mark as speaking
             audio_state = self.audio_states.get(session_id)
@@ -389,15 +426,15 @@ class CallOrchestrator:
             # Convert µ-law to PCM for STT (Sarvam expects PCM/WAV)
             pcm_audio = ulaw_to_pcm(audio_chunk)
             
-            print(f"📤 STT: Sending {len(pcm_audio)} bytes to Sarvam, language={session.language}")
+            print(f"📤 STT: Sending {len(pcm_audio)} bytes to Sarvam, language={history.language}")
             logger.info("📤 STT: Sending audio to Sarvam", 
                        session_id=session_id,
                        audio_size_bytes=len(pcm_audio),
-                       language=session.language)
+                       language=history.language)
             
             # Use batch transcription instead of streaming for simplicity
             stt_start = time.time()
-            transcript_result = await self.stt.transcribe_batch(pcm_audio, session.language)
+            transcript_result = await self.stt.transcribe_batch(pcm_audio, history.language)
             stt_time = time.time() - stt_start
             
             if transcript_result and transcript_result.text:
@@ -463,8 +500,8 @@ class CallOrchestrator:
             # Update session state to PROCESSING
             session = self.state_machine.transition(session, CallState.PROCESSING, "received_transcript")
             
-            # Get current sequence number BEFORE adding to history
-            current_seq = len(history.turns)
+            # Get current sequence number from history tracker
+            current_seq = history.get_next_sequence()
             
             # Save user transcript to database (before Gemini call)
             if db:
@@ -480,12 +517,14 @@ class CallOrchestrator:
                             sequence_number=current_seq,
                             role='user',
                             text=transcript,
-                            language=session.language,
+                            language=history.language,  # Use history.language not session.language
                             confidence=confidence,
                             is_final=True
                         )
                         db.add(db_transcript)
                         await db.commit()
+                        # CRITICAL: Increment sequence after successful save
+                        history.db_sequence += 1
                 except Exception as db_error:
                     logger.warning("transcript_db_save_error", error=str(db_error))
                     try:
@@ -506,21 +545,51 @@ class CallOrchestrator:
                 "state": "thinking"
             }, db)
             
-            print(f"📤 GEMINI: Sending request - user_input='{transcript}' language={session.language}")
+            print(f"📤 GEMINI: Sending request - user_input='{transcript}' language={history.language}")
             logger.info("📤 GEMINI: Sending request", 
                        session_id=session_id,
                        user_input=transcript,
-                       language=session.language,
+                       language=history.language,  # Use history.language
                        current_form=session.current_form)
             
-            # Process through Gemini
+            # Process through Gemini with timeout handling
+            import asyncio
             gemini_start = time.time()
-            gemini_response = await self.gemini.process(
+            
+            # Create task for Gemini processing
+            gemini_task = asyncio.create_task(self.gemini.process(
                 transcript=transcript,
                 history=history,
-                language=session.language
-            )
-            gemini_time = time.time() - gemini_start
+                language=history.language
+            ))
+            
+            # Wait with timeout to prevent WebSocket disconnection
+            # Give Gemini up to 20s (accounts for retries and API latency)
+            try:
+                gemini_response = await asyncio.wait_for(gemini_task, timeout=20.0)
+                gemini_time = time.time() - gemini_start
+                if gemini_time > 8:
+                    logger.warning("gemini_slow_response", 
+                                  session_id=session_id, 
+                                  time_ms=int(gemini_time * 1000))
+            except asyncio.TimeoutError:
+                logger.error("gemini_timeout", session_id=session_id)
+                # Create fallback response
+                from app.services.gemini_client import GeminiResponse, NextAction
+                wait_messages = {
+                    "gu": "માફ કરશો, મને સમજવામાં મુશ્કેલી આવી રહી છે. કૃપા કરીને ફરી કહો?",
+                    "hi": "माफ़ करें, मुझे समझने में कठिनाई हो रही है। कृपया फिर से बताएं?",
+                    "en": "Sorry, I'm having trouble understanding. Could you please repeat?"
+                }
+                gemini_response = GeminiResponse(
+                    intent="complaint",
+                    next_action=NextAction.ASK,
+                    speak=wait_messages.get(history.language, wait_messages["hi"]),
+                    fields={},
+                    missing_fields=[],
+                    confidence={}
+                )
+                gemini_time = time.time() - gemini_start
             
             print(f"📥 GEMINI: Response - intent={gemini_response.intent} action={gemini_response.next_action} response='{gemini_response.speak}' time={int(gemini_time * 1000)}ms")
             logger.info("📥 GEMINI: Response received", 
@@ -604,7 +673,7 @@ class CallOrchestrator:
                 tts_audio = await self.generate_speech_response(
                     session_id,
                     gemini_response.speak,
-                    session.language,
+                    history.language,  # Fixed: use history.language not session.language
                     db
                 )
             
@@ -701,8 +770,8 @@ class CallOrchestrator:
                     
                     if db_call:
                         history = self.conversation_history.get(session_id)
-                        # Use history.turns length which now includes the assistant response
-                        seq_num = len(history.turns) - 1 if history else 0
+                        # Use current sequence number and increment
+                        seq_num = history.get_next_sequence() if history else 0
                         db_transcript = Transcript(
                             call_id=db_call.id,
                             sequence_number=seq_num,
@@ -713,6 +782,9 @@ class CallOrchestrator:
                         )
                         db.add(db_transcript)
                         await db.commit()
+                        # CRITICAL: Increment sequence after successful save
+                        if history:
+                            history.db_sequence += 1
                 except Exception as db_error:
                     logger.warning("assistant_transcript_db_error", error=str(db_error))
                     try:
@@ -755,6 +827,19 @@ class CallOrchestrator:
                 logger.error("call_not_found_for_complaint", session_id=session_id)
                 return None
             
+            # Mock employee pool for assignment
+            MOCK_EMPLOYEES = [
+                "e1a2b3c4-5d6e-7f8a-9012-1a2b3c4d5e6f",  # Rajesh Kumar
+                "f2b3c4d5-6e7f-8901-2345-2b3c4d5e6f7a",  # Priya Shah
+                "a3c4d5e6-7f89-0123-4567-3c4d5e6f7a8b",  # Amit Patel
+                "b4d5e6f7-8901-2345-6789-4d5e6f7a8b9c",  # Neha Desai
+                "c5e6f7a8-9012-3456-789a-5e6f7a8b9c0d",  # Vikram Singh
+            ]
+            
+            # Randomly assign to an employee
+            import random
+            assigned_employee_id = uuid.UUID(random.choice(MOCK_EMPLOYEES))
+            
             # Create complaint
             complaint = Complaint(
                 call_id=db_call.id,  # Use proper UUID
@@ -767,7 +852,8 @@ class CallOrchestrator:
                 contact_number=session.current_form.get("contact_number"),
                 landmark=session.current_form.get("landmark"),
                 confidence_scores=session.confidence_scores,
-                status='registered'
+                status='registered',
+                assigned_to=assigned_employee_id  # Assign to random employee
             )
             
             db.add(complaint)

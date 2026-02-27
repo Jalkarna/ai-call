@@ -13,7 +13,9 @@ import {
   Flag,
   BrainCircuit,
   Volume2,
-  Mic
+  Mic,
+  PhoneOff,
+  CheckCircle
 } from "lucide-react";
 import { AudioPlayer } from "@/components/audio-player";
 import { TranscriptTimeline } from "@/components/transcript-timeline";
@@ -35,9 +37,11 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
 
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [extractedFields, setExtractedFields] = useState<Record<string, any>>({});
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [activeStatus, setActiveStatus] = useState<string>('');
   const [systemState, setSystemState] = useState<'idle' | 'listening' | 'thinking' | 'speaking'>('idle');
+  const [callEnded, setCallEnded] = useState(false);
+  const [endedAt, setEndedAt] = useState<string | null>(null);
+  const [duration, setDuration] = useState<number>(0);
 
   // Initialize state from existing call data
   useEffect(() => {
@@ -86,8 +90,13 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
       setSystemState(data.state);
     }
 
-    if (lastEvent.type === 'call_updated' || lastEvent.type === 'call_ended') {
-      // Ideally trigger refetch or update status
+    if (lastEvent.type === 'call_ended') {
+      const data = lastEvent.data as any;
+      setActiveStatus('completed');
+      setSystemState('idle');
+      setCallEnded(true);
+      setEndedAt(data.end_time || new Date().toISOString());
+      setDuration(data.duration_seconds || 0);
     }
   }, [lastEvent]);
 
@@ -110,8 +119,9 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-semibold">Call Details</h1>
-              <Badge variant={call.status === "dropped" ? "destructive" : "secondary"}>
-                {call.status}
+              <Badge variant={callEnded ? "default" : call.status === "dropped" ? "destructive" : "secondary"}
+                     className={callEnded ? "bg-green-600" : ""}>
+                {callEnded ? "completed" : activeStatus || call.status}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -137,15 +147,31 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {call.status === 'active' && (
-        <Card className="bg-primary/5 mb-6">
-          <CardContent className="flex items-center gap-4 py-4">
+      {/* Live Status Card - Show for active calls or just-ended calls */}
+      {(call.status === 'active' || callEnded) && (
+        <Card className={callEnded ? "bg-green-500/10 border-green-500/30 mb-6" : "bg-primary/5 mb-6"}>
+          <CardContent className="flex items-center justify-between py-4">
             <div className="flex items-center gap-2 font-medium">
-              {systemState === 'thinking' && <><BrainCircuit className="h-5 w-5 animate-pulse text-primary" /> AI is Thinking...</>}
-              {systemState === 'speaking' && <><Volume2 className="h-5 w-5 animate-bounce text-green-600" /> AI is Speaking</>}
-              {systemState === 'listening' && <><Mic className="h-5 w-5 text-blue-500" /> Listening to user...</>}
-              {(systemState === 'idle' || !systemState) && <span className="text-muted-foreground">Session Active</span>}
+              {callEnded ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <span className="text-green-700">Call Ended Successfully</span>
+                </>
+              ) : (
+                <>
+                  {systemState === 'thinking' && <><BrainCircuit className="h-5 w-5 animate-pulse text-primary" /> AI is Thinking...</>}
+                  {systemState === 'speaking' && <><Volume2 className="h-5 w-5 animate-bounce text-green-600" /> AI is Speaking</>}
+                  {systemState === 'listening' && <><Mic className="h-5 w-5 text-blue-500" /> Listening to user...</>}
+                  {(systemState === 'idle' || !systemState) && <span className="text-muted-foreground">Session Active</span>}
+                </>
+              )}
             </div>
+            {callEnded && (
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span>Duration: {Math.floor(duration / 60)}m {duration % 60}s</span>
+                {endedAt && <span>Ended: {format(new Date(endedAt), "h:mm:ss a")}</span>}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

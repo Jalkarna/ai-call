@@ -100,7 +100,7 @@ class SarvamTTSClient:
         """Get default voice for language."""
         voice_map = {
             Language.HINDI: Voice.ANUSHKA,
-            Language.GUJARATI: Voice.PRIYA,
+            Language.GUJARATI: Voice.MANISHA,
             Language.ENGLISH: Voice.ANUSHKA
         }
         return voice_map.get(language, Voice.ANUSHKA)
