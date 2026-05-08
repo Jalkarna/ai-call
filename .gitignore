@@ -4,6 +4,16 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+terminal.log
+
+# Binary / presentation files (keep locally, not in repo)
+*.pptx
+*.docx
+*.pdf
+
+# Secrets (never commit real .env)
+backend/.env
+*.env
 
 # Frontend (Node.js / Next.js)
 frontend/node_modules/
