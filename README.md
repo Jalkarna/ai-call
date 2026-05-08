@@ -2,7 +2,7 @@
 
 An inbound call system built for Vadodara Municipal Corporation. Citizens call a helpline and file municipal complaints through voice, in Hindi, Gujarati, or English. No app, no form, just a phone call.
 
-> Built at PU Code Hackathon 2.0 Pro.
+> Built at PU Code Hackathon 2.0 Bro.
 
 ---
 
